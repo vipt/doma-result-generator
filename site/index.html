@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Doma 2のSELECT結果からJavaの結果クラスを生成するEclipseプラグイン。型指定と、手動コードを保持する差分更新に対応します。">
+  <meta name="color-scheme" content="light dark">
+  <title>Doma Result Generator — Eclipse Update Site</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="site.js" defer></script>
+</head>
+<body>
+  <header>
+    <p class="eyebrow">ECLIPSE PLUGIN · DOMA 2</p>
+    <h1>Doma Result Generator</h1>
+    <p class="lead">SELECTの結果を、Javaの結果クラスへ。</p>
+    <nav aria-label="Language / 言語"><a href="#ja">日本語</a><span aria-hidden="true"> / </span><a href="#en" lang="en">English</a></nav>
+  </header>
+
+  <main>
+    <div class="install-url">
+      <p class="label">更新サイトURL / Update site URL</p>
+      <a id="update-url" href="https://vipt.github.io/doma-result-generator/">https://vipt.github.io/doma-result-generator/</a>
+      <button id="copy-url" type="button" hidden>URLをコピー / Copy URL</button>
+      <span id="copy-status" class="status" role="status"></span>
+    </div>
+
+    <section id="ja" aria-labelledby="ja-title">
+      <h2 id="ja-title">日本語</h2>
+      <p>Doma 2のSELECT結果から、<code>@Entity</code>・<code>@Column</code>付きのJavaクラスを生成するEclipseプラグインです。JOINや集計など、テーブル単位では表せない検索結果に利用できます。</p>
+
+      <h3>インストール</h3>
+      <ol>
+        <li>Eclipseで <strong>ヘルプ → 新規ソフトウェアのインストール…</strong>（Help → Install New Software…）を開きます。</li>
+        <li><strong>追加…</strong>（Add…）を選び、名前を <strong>Doma Result Generator</strong>、ロケーションを上の更新サイトURLにします。</li>
+        <li><strong>Doma Result Generator</strong>を選択し、内容とライセンスを確認してインストールします。</li>
+        <li>Eclipseを再起動します。以降は <strong>ヘルプ → 更新の確認</strong>（Help → Check for Updates）から更新できます。</li>
+      </ol>
+      <p><a href="downloads/doma-result-generator-update-site.zip">更新サイトのZIPをダウンロード</a>して、<strong>Add… → Archive…</strong>からインストールすることもできます。</p>
+
+      <h3>できること</h3>
+      <ul>
+        <li>SQLファイルを右クリックし、<strong>Generate Doma Result Class…</strong>から列名と型を取得してクラスを生成。</li>
+        <li><code>name.properties</code>の正規表現で、名前に一致するプロパティのJava型を指定。</li>
+        <li>既存クラスは <strong>Preview → 差分比較 → Update</strong>で更新。手動メソッドやコメントを保持し、衝突がある場合は更新を停止。</li>
+        <li>JavaのDAOメソッド呼び出しから <strong>Jump to Doma SQL</strong>で外部SQLへ移動。</li>
+      </ul>
+      <pre><code># name.properties
+.*Datetime$=java.time.LocalDateTime</code></pre>
+      <p><code>CREATED_DATETIME</code>から生成する<code>createdDatetime</code>のようなJavaのプロパティ名に照合し、上から最初に一致したルールをJDBCの推定型より優先します。</p>
+
+      <h3>対応環境と現在の範囲</h3>
+      <p><strong>Eclipse 2023-12 / 4.30以降、Java 17以上</strong>を対象にしています。Java開発機能（JDT）、対象プロジェクトのDoma 2設定、JDBCドライバーを用意してください。</p>
+      <p class="note">初期プレビュー版です。H2とDoma 2.57.0で生成・更新処理をテストしています。他DBはJDBCドライバーの実行前メタデータ取得に依存します。Domaの動的SQLは<strong>Metadata SQL</strong>で具体的なSELECTに置き換えてください。旧版クラスの生成元が不明なフィールドは削除せず残します。比較画面の手動操作と、各DBでの検証は今後の確認項目です。</p>
+      <p class="links"><a href="https://github.com/vipt/doma-result-generator/blob/main/README.ja.md">詳しい使い方</a><a href="https://github.com/vipt/doma-result-generator">ソースコード</a><a href="https://github.com/vipt/doma-result-generator/issues">不具合・要望</a></p>
+    </section>
+
+    <section id="en" lang="en" aria-labelledby="en-title">
+      <h2 id="en-title">English</h2>
+      <p>An Eclipse plug-in that generates Doma 2 result entities from SELECT column metadata. Use it for joins, aggregates and projections that do not match a single table.</p>
+      <h3>Install</h3>
+      <ol>
+        <li>Open <strong>Help → Install New Software…</strong> in Eclipse.</li>
+        <li>Click <strong>Add…</strong>. Enter <strong>Doma Result Generator</strong> and the update site URL above.</li>
+        <li>Select <strong>Doma Result Generator</strong>, review the installation details and license, and complete the installation.</li>
+        <li>Restart Eclipse. Use <strong>Help → Check for Updates</strong> for future updates.</li>
+      </ol>
+      <p>You can also <a href="downloads/doma-result-generator-update-site.zip">download the update-site ZIP</a> and install with <strong>Add… → Archive…</strong>.</p>
+      <h3>Features</h3>
+      <ul>
+        <li>Right-click a SQL file and select <strong>Generate Doma Result Class…</strong> to generate an entity.</li>
+        <li>Override property types with ordered, regex-based <code>name.properties</code> rules.</li>
+        <li>Review existing-class changes before <strong>Update</strong>, retaining handwritten methods and comments. Conflicts stop the update.</li>
+        <li>Use <strong>Jump to Doma SQL</strong> on a Java DAO method call to open its external SQL.</li>
+      </ul>
+      <p>Requires Eclipse Java IDE <strong>2023-12 / 4.30+</strong>, <strong>Java 17+</strong>, a Doma 2 project and a JDBC driver.</p>
+      <p class="note">Initial preview. Core generation and update tests use H2 and Doma 2.57.0. Other databases depend on pre-execution JDBC metadata support. Replace dynamic Doma directives with a concrete SELECT in Metadata SQL. Uncertain unmarked legacy fields are retained. Manual comparison-dialog checks and database-specific validation remain open.</p>
+      <p class="links"><a href="https://github.com/vipt/doma-result-generator/blob/main/README.md">Documentation</a><a href="https://github.com/vipt/doma-result-generator">Source</a><a href="https://github.com/vipt/doma-result-generator/issues">Issues</a></p>
+    </section>
+  </main>
+
+  <footer>
+    <p>Doma・Eclipseの公式製品ではない独立したコミュニティプロジェクトです。<br><span lang="en">An independent community project, distributed under the <a href="https://github.com/vipt/doma-result-generator/blob/main/LICENSE">Apache License 2.0</a>.</span></p>
+    <p id="build-info" class="build-info"></p>
+  </footer>
+</body>
+</html>

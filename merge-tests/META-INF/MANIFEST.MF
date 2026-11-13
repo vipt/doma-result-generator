@@ -1,0 +1,10 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: Doma Result Update Tests
+Bundle-SymbolicName: io.github.domaresult.merge.tests
+Bundle-Version: 0.1.0.qualifier
+Bundle-RequiredExecutionEnvironment: JavaSE-17
+Fragment-Host: io.github.domaresult.eclipse
+Require-Bundle: org.junit;bundle-version="[4.13,5.0)",
+ org.eclipse.jdt.launching
+

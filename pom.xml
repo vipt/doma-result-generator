@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>io.github.domaresult</groupId>
+  <artifactId>doma-result-generator</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>Doma Result Generator</name>
+  <url>https://vipt.github.io/doma-result-generator/</url>
+  <scm>
+    <connection>scm:git:https://github.com/vipt/doma-result-generator.git</connection>
+    <url>https://github.com/vipt/doma-result-generator</url>
+  </scm>
+  <description>An independent Eclipse plug-in generating Doma 2 entities from SELECT result metadata.</description>
+  <licenses><license><name>Apache License, Version 2.0</name><url>https://www.apache.org/licenses/LICENSE-2.0</url></license></licenses>
+  <modules>
+    <module>tests</module>
+    <module>plugin</module>
+    <module>navigation-tests</module>
+    <module>merge-tests</module>
+    <module>feature</module>
+    <module>repository</module>
+  </modules>
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.release>17</maven.compiler.release>
+    <tycho.version>3.0.5</tycho.version>
+  </properties>
+  <repositories>
+    <repository><id>eclipse-2023-12</id><layout>p2</layout><url>https://download.eclipse.org/releases/2023-12/</url></repository>
+  </repositories>
+  <build>
+    <plugins>
+      <plugin><groupId>org.eclipse.tycho</groupId><artifactId>tycho-maven-plugin</artifactId><version>${tycho.version}</version><extensions>true</extensions></plugin>
+      <plugin>
+        <groupId>org.eclipse.tycho</groupId><artifactId>target-platform-configuration</artifactId><version>${tycho.version}</version>
+        <configuration>
+          <environments>
+            <environment><os>linux</os><ws>gtk</ws><arch>x86_64</arch></environment>
+            <environment><os>win32</os><ws>win32</ws><arch>x86_64</arch></environment>
+            <environment><os>macosx</os><ws>cocoa</ws><arch>aarch64</arch></environment>
+            <environment><os>macosx</os><ws>cocoa</ws><arch>x86_64</arch></environment>
+          </environments>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

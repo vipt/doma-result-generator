@@ -1,0 +1,2 @@
+# Java/OSGi manifests terminate their main section with a blank line.
+**/META-INF/MANIFEST.MF whitespace=-blank-at-eof

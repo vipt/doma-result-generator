@@ -1,0 +1,50 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.85;
+  --text: #202d3d;
+  --muted: #536477;
+  --link: #145db2;
+  --border: #ccd6e2;
+  --surface: #f1f6fc;
+  background: #fff;
+  color: var(--text);
+}
+* { box-sizing: border-box; }
+body { max-width: 52rem; margin: 3.5rem auto; padding: 0 1.5rem; }
+h1, h2, h3 { line-height: 1.35; letter-spacing: -.025em; }
+h1 { font-size: clamp(2rem, 5.6vw, 2.9rem); margin: .35rem 0 .6rem; }
+h2 { font-size: 1.65rem; }
+h3 { margin: 1.9rem 0 .7rem; font-size: 1.15rem; }
+a { color: var(--link); text-underline-offset: .2em; }
+a:hover { text-decoration-thickness: .15em; }
+a:focus-visible, button:focus-visible { outline: 3px solid var(--link); outline-offset: 4px; }
+.eyebrow { font-size: .75rem; font-weight: 650; letter-spacing: .14em; color: var(--muted); margin-bottom: 0; }
+.lead { color: var(--muted); font-size: 1.18rem; margin: 0 0 1.1rem; }
+nav { font-size: .9rem; }
+section { margin-top: 3rem; scroll-margin-top: 1.5rem; }
+section + section { border-top: 1px solid var(--border); padding-top: 1.5rem; }
+li { margin: .55rem 0; }
+code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9em; overflow-wrap: anywhere; }
+pre { background: var(--surface); border-radius: .4rem; padding: 1rem 1.2rem; overflow-x: auto; line-height: 1.7; }
+pre code { overflow-wrap: normal; }
+.install-url { margin-top: 2.2rem; padding: 1.25rem; border: 1px solid var(--border); border-left: 4px solid var(--link); border-radius: .4rem; background: var(--surface); }
+.label { margin: 0 0 .5rem; color: var(--muted); font-size: .85rem; font-weight: 650; }
+#update-url { display: block; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+button { cursor: pointer; margin-top: 1rem; padding: .45rem .8rem; border: 1px solid var(--border); border-radius: .3rem; font: inherit; font-size: .82rem; color: var(--text); background: transparent; }
+button:hover { border-color: var(--link); }
+[hidden] { display: none !important; }
+.status { display: inline-block; margin-left: .7rem; font-size: .8rem; color: var(--muted); }
+.note { font-size: .9rem; color: var(--muted); border-left: 2px solid var(--border); padding-left: 1rem; }
+.links { display: flex; gap: .6rem 1.4rem; flex-wrap: wrap; font-size: .9rem; }
+footer { border-top: 1px solid var(--border); margin-top: 3rem; padding-top: 1rem; font-size: .8rem; color: var(--muted); }
+.build-info { overflow-wrap: anywhere; }
+@media (prefers-color-scheme: dark) {
+  :root { --text: #dce6f2; --muted: #a3b4c7; --link: #8dbdff; --border: #37495f; --surface: #192736; background: #101a25; }
+}
+@media (max-width: 480px) {
+  body { margin-top: 2rem; padding: 0 1rem; }
+  .install-url { padding: 1rem; }
+  ol, ul { padding-left: 1.4rem; }
+  .status { display: block; margin-left: 0; }
+}

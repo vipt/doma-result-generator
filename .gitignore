@@ -1,0 +1,9 @@
+**/target/
+.metadata/
+.DS_Store
+.idea/
+*.iml
+dist/
+.maven-cache/
+_site/
+/doma-tools/
