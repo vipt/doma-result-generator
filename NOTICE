@@ -4,3 +4,15 @@ Copyright 2026 Doma Result Generator contributors
 This is an independent community project, not an official Doma or Eclipse product.
 Doma and Eclipse and their respective logos belong to their respective owners.
 No JDBC driver is included in this distribution.
+
+The source distribution includes Apache Maven Wrapper:
+
+Apache Maven Wrapper
+Copyright 2013-2022 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+The original idea and initial implementation of the maven-wrapper module is derived
+from the Gradle Wrapper which was written originally by Hans Dockter and Adam Murdoch.
+Copyright 2007 the original author or authors.

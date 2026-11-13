@@ -22,8 +22,11 @@ jobs:
           cache-dependency-path: |
             **/pom.xml
             **/META-INF/MANIFEST.MF
+            .mvn/wrapper/maven-wrapper.properties
+      - name: Verify pinned Maven and Java versions
+        run: ./mvnw --version
       - name: Verify plugin and Eclipse integration tests
-        run: xvfb-run --auto-servernum mvn --batch-mode --no-transfer-progress verify
+        run: xvfb-run --auto-servernum ./mvnw --batch-mode --no-transfer-progress verify
       - name: Preserve test reports
         if: always()
         uses: actions/upload-artifact@v7.0.2

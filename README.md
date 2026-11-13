@@ -158,7 +158,7 @@ See [examples/name.properties](examples/name.properties) and the official [Entit
 - Eclipse IDE with Java Development Tools, targeting Eclipse **2023-12 / 4.30** or later; runtime Java **17+**.
 - A JDBC driver that can return `PreparedStatement.getMetaData()` before execution, and database access.
 - A Java project using Doma 2. Generated classes use Java 8 language features and Java 8 date/time types.
-- To build: JDK 17+ and Maven 3.8.6+.
+- To build: JDK 17+. The included Apache Maven Wrapper pins Maven 3.8.6 for the Tycho 3 build; use `mvnw.cmd` on Windows.
 
 In Eclipse, open **Help → Install New Software... → Add...** and enter this update site URL:
 
@@ -171,7 +171,7 @@ Select **Doma Result Generator**, review the installation details and license, a
 Build the plug-in and p2 update site:
 
 ```sh
-mvn --batch-mode --no-transfer-progress verify
+./mvnw --batch-mode --no-transfer-progress verify
 ```
 
 The installable ZIP is `repository/target/doma-result-generator-repository-0.1.0-SNAPSHOT.zip`. In Eclipse select **Help → Install New Software... → Add... → Archive...**, select that ZIP, select **Doma Result Generator**, complete installation and restart. This build fetches its target platform from the pinned Eclipse 2023-12 repository.
@@ -181,7 +181,7 @@ For development with Eclipse PDE, import `plugin` as an existing project, select
 Run portable core tests without resolving the Eclipse target platform:
 
 ```sh
-mvn -f tests/pom.xml test
+./mvnw -f tests/pom.xml test
 ```
 
 Tests cover join/aggregate metadata, empty results, no query execution, driver isolation, names/aliases, template validation, ordered name rules and Java 8 compilation with the real Doma annotation processor. Integration tests compile generated entities and DAOs, then read actual H2 rows through Doma, including an overridden LocalDateTime property and a custom domain.
@@ -200,7 +200,7 @@ Source is hosted at [vipt/doma-result-generator](https://github.com/vipt/doma-re
 
 The **Build and deploy Pages** workflow builds and tests each push to `main`, assembles the landing page and p2 site with `python3 scripts/build_pages.py`, then deploys only a successful build. Pull requests are tested without publishing. GitHub Actions must be selected as the repository's Pages source. The workflow also retains test reports and the update-site ZIP as build artifacts; GitHub Releases are managed separately.
 
-To preview the assembled site locally after `mvn verify`:
+To preview the assembled site locally after `./mvnw verify`:
 
 ```sh
 python3 scripts/build_pages.py

@@ -13,7 +13,7 @@ def main():
     repository = root / "repository/target/repository"
     archive = root / "repository/target/doma-result-generator-repository-0.1.0-SNAPSHOT.zip"
     if not repository.is_dir() or not archive.is_file():
-        raise SystemExit("Run mvn verify before assembling Pages.")
+        raise SystemExit("Run ./mvnw verify before assembling Pages.")
     if not (repository / "content.jar").is_file() or not (repository / "artifacts.jar").is_file():
         raise SystemExit("The p2 repository is missing its metadata.")
     plugins = list((repository / "plugins").glob("io.github.domaresult.eclipse_*.jar"))

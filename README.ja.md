@@ -100,7 +100,7 @@ java.time.LocalDateTime createdDatetime;
 
 ## ビルド・インストール
 
-開発・実行環境はJava 17以上、Eclipseは2023-12 / 4.30以降を対象とします。ビルドにはMaven 3.8.6以上を使います。生成クラスのJava構文・日時型はJava 8に対応します。
+開発・実行環境はJava 17以上、Eclipseは2023-12 / 4.30以降を対象とします。ビルドは同梱のApache Maven WrapperでMaven 3.8.6を使用します。Windowsでは`mvnw.cmd`を使ってください。生成クラスのJava構文・日時型はJava 8に対応します。
 
 公開版は、Eclipseの **Help → Install New Software... → Add...** で次のURLを指定するとインストールできます。
 
@@ -113,7 +113,7 @@ https://vipt.github.io/doma-result-generator/
 ソースからビルドする場合:
 
 ```sh
-mvn --batch-mode --no-transfer-progress verify
+./mvnw --batch-mode --no-transfer-progress verify
 ```
 
 `repository/target/doma-result-generator-repository-0.1.0-SNAPSHOT.zip`が更新サイトのZIPになります。Eclipseの**Help → Install New Software... → Add... → Archive...**から選び、インストール後に再起動します。対象のJavaプロジェクトではDomaの依存関係とアノテーションプロセッサーを設定しておいてください。
@@ -121,7 +121,7 @@ mvn --batch-mode --no-transfer-progress verify
 Eclipse本体を取得せずにコアのテストだけ実行する場合:
 
 ```sh
-mvn -f tests/pom.xml test
+./mvnw -f tests/pom.xml test
 ```
 
 ## 公式生成ツールとの関係

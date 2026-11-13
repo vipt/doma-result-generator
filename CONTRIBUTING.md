@@ -4,7 +4,7 @@ Contributions are welcome under the [Apache License 2.0](LICENSE). By submitting
 
 ## Development
 
-Use JDK 17+ and Maven 3.8.6+. Run `mvn -f tests/pom.xml test` for the portable core and `mvn verify` for the complete Eclipse plug-in and update site. Import `plugin` into Eclipse PDE for interactive development. Keep core code free of Eclipse and vendor JDBC dependencies. Add a targeted regression test for changes to metadata handling or source generation.
+Use JDK 17+ and the included Apache Maven Wrapper, which pins Maven 3.8.6 for Tycho 3 compatibility. Set `JAVA_HOME` to that JDK if necessary. Run `./mvnw -f tests/pom.xml test` for the portable core and `./mvnw verify` for the complete Eclipse plug-in and update site (`mvnw.cmd` on Windows). Import `plugin` into Eclipse PDE for interactive development. Keep core code free of Eclipse and vendor JDBC dependencies. Add a targeted regression test for changes to metadata handling or source generation.
 
 The root is a Tycho reactor. `tests` is intentionally a standalone Maven project: it compiles the core and merger source using Maven JDT libraries, without resolving a p2 target or launching Eclipse. `navigation-tests` is a test fragment that checks Java-to-SQL navigation in a headless Eclipse runtime using real JDT projects. `merge-tests` checks update snapshots, compiler validation, dirty buffers, encoding and local history in real workspace projects. `plugin` holds the runtime, `feature` describes the installable feature, and `repository` builds a p2 site.
 
@@ -12,7 +12,7 @@ The root is a Tycho reactor. `tests` is intentionally a standalone Maven project
 
 Before a release, record the Eclipse version, Java runtime, operating system and JDBC driver version used for these checks:
 
-1. Build with `mvn clean verify`. Install the update-site ZIP into a clean Eclipse Java IDE and restart. Confirm the feature is installed without unresolved bundle errors.
+1. Build with `./mvnw clean verify`. Install the update-site ZIP into a clean Eclipse Java IDE and restart. Confirm the feature is installed without unresolved bundle errors.
 2. Open a Java project with Doma and annotation processing. Save a `.sql` file and confirm the context menu appears for a single SQL file in both supported explorers.
 3. With a test database, preview a SELECT with JOINs, explicit aliases, nullable columns and an aggregate. Confirm correct field types and original labels. Run a DAO returning the generated class.
 4. Generate into a source folder and a new package. Confirm the class opens in the Java editor. Add handwritten methods and comments, change SQL columns/types, and preview the same destination. Confirm the read-only comparison shows both versions and no file is changed before Update. Apply, check custom code/comments and local history, then preview again and confirm Update is disabled with no changes.
