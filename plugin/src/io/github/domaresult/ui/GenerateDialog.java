@@ -28,6 +28,7 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
 import org.eclipse.jface.dialogs.IDialogConstants;
+import org.eclipse.jface.dialogs.IMessageProvider;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.dialogs.ProgressMonitorDialog;
 import org.eclipse.jface.dialogs.TitleAreaDialog;
@@ -58,7 +59,10 @@ final class GenerateDialog extends TitleAreaDialog {
     private final IFile sqlFile;
     private final List<IPackageFragmentRoot> roots;
     private final String initialSql;
+    private final ConnectionSettingsStore connectionSettings;
     private Text jars, driverClass, jdbcUrl, user, password, packageName, className, typeMappingsFile;
+    private Button savePassword;
+    private boolean passwordReadFailed;
     private Combo sourceFolder;
     private StyledText sql, preview;
     private TabFolder tabs;
@@ -75,6 +79,7 @@ final class GenerateDialog extends TitleAreaDialog {
         this.sqlFile = file;
         this.roots = roots;
         this.initialSql = initialSql;
+        this.connectionSettings = ConnectionSettingsStore.forProject(file.getProject());
         setShellStyle(getShellStyle() | SWT.RESIZE);
     }
 
@@ -86,7 +91,8 @@ final class GenerateDialog extends TitleAreaDialog {
         tabs = new TabFolder(area, SWT.NONE);
         tabs.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
         Composite config = page("Configuration", 3);
-        jars = field(config, "Driver JARs", "", false);
+        var saved = connectionSettings.load();
+        jars = field(config, "Driver JARs", saved.jars(), false);
         Button browse = new Button(config, SWT.PUSH);
         browse.setText("Browse...");
         browse.addListener(SWT.Selection, e -> {
@@ -98,11 +104,21 @@ final class GenerateDialog extends TitleAreaDialog {
             }
         });
         note(config, "Multiple driver/dependency JARs: separate paths with semicolons.");
-        driverClass = fullField(config, "Driver class", "", false);
-        jdbcUrl = fullField(config, "JDBC URL", "", false);
-        user = fullField(config, "Username", "", false);
+        driverClass = fullField(config, "Driver class", saved.driverClass(), false);
+        jdbcUrl = fullField(config, "JDBC URL", saved.url(), false);
+        user = fullField(config, "Username", saved.username(), false);
         password = fullField(config, "Password", "", true);
-        note(config, "Connection settings are used for this dialog only and are not saved.");
+        savePassword = new Button(config, SWT.CHECK);
+        savePassword.setText("Save password in Eclipse Secure Storage");
+        savePassword.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 3, 1));
+        savePassword.setSelection(connectionSettings.remembersPassword());
+        try { password.setText(connectionSettings.loadPassword(saved)); }
+        catch (IOException e) {
+            passwordReadFailed = true;
+            setMessage("The saved password could not be read. Enter it to connect, or clear Save password to remove it.", IMessageProvider.WARNING);
+        }
+        note(config, "Connection defaults are remembered locally per project, including on Cancel. Password saving is optional; Secure Storage may ask to unlock.");
+        note(config, "Use Username and Password for credentials. URLs containing embedded credentials are not remembered.");
         IFile defaults = sqlFile.getProject().getFile("name.properties");
         String defaultFile = defaults.exists() && defaults.getLocation() != null ? defaults.getLocation().toOSString() : "";
         typeMappingsFile = field(config, "Type mappings (optional)", defaultFile, false);
@@ -135,6 +151,12 @@ final class GenerateDialog extends TitleAreaDialog {
         for (Text input : List.of(jars, driverClass, jdbcUrl, user, password, packageName, className, typeMappingsFile)) input.addModifyListener(invalidate);
         sql.addModifyListener(invalidate);
         sourceFolder.addModifyListener(invalidate);
+        ModifyListener clearPassword = e -> {
+            passwordReadFailed = false;
+            password.setText("");
+        };
+        for (Text input : List.of(driverClass, jdbcUrl, user)) input.addModifyListener(clearPassword);
+        password.addModifyListener(e -> passwordReadFailed = false);
         return area;
     }
 
@@ -346,7 +368,17 @@ final class GenerateDialog extends TitleAreaDialog {
 
     @Override
     public boolean close() {
-        if (password != null && !password.isDisposed()) password.setText("");
+        if (password != null && !password.isDisposed()) {
+            try {
+                connectionSettings.save(new ConnectionSettingsStore.Connection(jars.getText(), driverClass.getText().trim(),
+                        jdbcUrl.getText().trim(), user.getText()), savePassword.getSelection(),
+                        passwordReadFailed && password.getText().isEmpty() ? null : password.getText());
+            } catch (IOException e) {
+                MessageDialog.openWarning(getShell(), "Connection settings", "Connection settings or the saved password could not be updated. "
+                        + "Check workspace permissions and Eclipse Secure Storage under Preferences > General > Security > Secure Storage.");
+            }
+            password.setText("");
+        }
         return super.close();
     }
 }

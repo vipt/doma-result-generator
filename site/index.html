@@ -41,6 +41,7 @@
       <h3>できること</h3>
       <ul>
         <li>SQLファイルを右クリックし、<strong>Generate Doma Result Class…</strong>から列名と型を取得してクラスを生成。</li>
+        <li>JDBC接続設定をプロジェクトごとに保持。パスワードは<strong>Save password in Eclipse Secure Storage</strong>で暗号化保存を選択。</li>
         <li><code>name.properties</code>の正規表現で、名前に一致するプロパティのJava型を指定。</li>
         <li>既存クラスは <strong>Preview → 差分比較 → Update</strong>で更新。手動メソッドやコメントを保持し、衝突がある場合は更新を停止。</li>
         <li>JavaのDAOメソッド呼び出しから <strong>Jump to Doma SQL</strong>で外部SQLへ移動。</li>
@@ -72,6 +73,7 @@
         <li>Override property types with ordered, regex-based <code>name.properties</code> rules.</li>
         <li>Review existing-class changes before <strong>Update</strong>, retaining handwritten methods and comments. Conflicts stop the update.</li>
         <li>Use <strong>Jump to Doma SQL</strong> on a Java DAO method call to open its external SQL.</li>
+        <li>Remember JDBC connection defaults per project, with optional encrypted password storage in Eclipse Secure Storage.</li>
       </ul>
       <p>Requires Eclipse Java IDE <strong>2023-12 / 4.30+</strong>, <strong>Java 17+</strong>, a Doma 2 project and a JDBC driver.</p>
       <p class="note">Initial preview. Core generation and update tests use H2 and Doma 2.57.0. Other databases depend on pre-execution JDBC metadata support. Simple <code>/*%expand*/</code> directives are prepared automatically; replace conditions and loops with a concrete SELECT in Metadata SQL. <strong>Error details...</strong> reports Oracle numbers and failure stages. Uncertain unmarked legacy fields are retained. Manual comparison-dialog checks and database-specific validation remain open.</p>

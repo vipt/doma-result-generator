@@ -19,11 +19,15 @@ Daoの呼び出し元から、対応するSQLファイルへ直接移動する�
 
 `@Entity`、列の別名に対応する`@Column`、フィールド、getter/setterを生成します。既存クラスは差分確認後に更新できます。DAOやプロジェクト設定は変更しないため、生成したクラスをDAOの戻り値に指定してください。
 
-接続情報はダイアログ内だけで使用し、保存しません。ドライバーは同梱せず、利用者が別途用意します。DBエラーでは、失敗した段階、例外クラス、SQLState、ベンダーエラー番号、取得できる場合はOracleのORA番号を表示します。**Error details...**から詳細を確認できます。接続情報を含む可能性があるドライバーの例外本文は表示・記録しません。
+Driver JARs・Driver class・JDBC URL・Usernameは、ダイアログを閉じるとプロジェクトごとにローカルのワークスペースへ保存します。**Cancel**で閉じた場合も保持し、次回起動時やEclipse再起動後に復元します。プロジェクト内のファイルには書き込みません。出力先・パッケージ・クラス名・編集したMetadata SQLは保持しません。
+
+パスワードは**Save password in Eclipse Secure Storage**で保存するかを選べます。初期状態ではオフです。オンの場合、Password欄を[EclipseのSecure Storage](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.isv/guide/secure_storage_architecture.htm)に暗号化して保存します。Eclipseからロック解除を求められる場合があります。チェックを外すかPassword欄を空にしてダイアログを閉じると、保存済みのパスワードを削除します。通常の設定ファイルにはパスワードを書き込みません。Driver class・JDBC URL・Usernameを変更すると、復元済みのパスワードをクリアします。認証情報はUsername・Password欄へ入力してください。Oracleの`user/password@...`や`password=...`、URLのユーザー情報など、認証情報を含むURLは保持しません。Secure Storageの読み込みや更新に失敗した場合は通知し、平文での代替保存は行いません。
+
+ドライバーは同梱せず、利用者が別途用意します。DBエラーでは、失敗した段階、例外クラス、SQLState、ベンダーエラー番号、取得できる場合はOracleのORA番号を表示します。**Error details...**から詳細を確認できます。接続情報を含む可能性があるドライバーの例外本文は表示・記録しません。
 
 ## 既存クラスの差分プレビューと更新
 
-既存クラスと同じソースフォルダー・パッケージ・クラス名を指定して**Preview**を押すと、変更前の**Current saved class**と変更後の**Proposed update**を並べたEclipseの比較画面を開きます。比較画面は読み取り専用です。確認して比較画面を閉じ、生成ダイアログの**Update**を押すと反映します。**Compare changes...**から再確認でき、**Proposed Java**では更新後のファイル全体を確認できます。比較画面を閉じただけの場合や、生成ダイアログをキャンセルした場合は保存しません。変更がなければUpdateは無効になります。
+既存クラスと同じソースフォルダー・パッケージ・クラス名を指定して**Preview**を押すと、変更前の**Current saved class**と変更後の**Proposed update**を並べたEclipseの比較画面を開きます。比較画面は読み取り専用です。確認して比較画面を閉じ、生成ダイアログの**Update**を押すと反映します。**Compare changes...**から再確認でき、**Proposed Java**では更新後のファイル全体を確認できます。比較画面を閉じただけの場合や、生成ダイアログをキャンセルした場合はJavaファイルを変更しません。変更がなければUpdateは無効になります。
 
 生成するフィールド・getter/setterには、管理対象を示すJavadocタグ`@domaGenerated`を付けます。更新時はJavaの構文情報とソース上の位置を使って、必要な箇所を変更します。
 
