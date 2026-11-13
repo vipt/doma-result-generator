@@ -25,6 +25,18 @@ Driver JARs・Driver class・JDBC URL・Usernameは、ダイアログを閉じ�
 
 ドライバーは同梱せず、利用者が別途用意します。DBエラーでは、失敗した段階、例外クラス、SQLState、ベンダーエラー番号、取得できる場合はOracleのORA番号を表示します。**Error details...**から詳細を確認できます。接続情報を含む可能性があるドライバーの例外本文は表示・記録しません。
 
+### macOSでパスワードを保存できない場合
+
+保存時に`Connection settings or the saved password could not be updated.`と表示される場合、macOSのキーチェーンからSecure Storage用のマスターパスワードを取得できていない可能性があります。入力画面やキーチェーンのアクセス許可画面が表示されないまま失敗する場合もあります。Eclipseのログに`OSXProvider`のエラー（例：`Could not obtain password. Result: -25300`）がある場合は、次の手順で**UI Prompt**への切り替えを試してください。
+
+1. Eclipseの設定（macOSでは通常`⌘,`）を開きます。
+2. **General → Security → Secure Storage → Password**を開きます。
+3. **Master password providers**で**OS X Keystore Integration**のチェックを外し、**UI Prompt**を有効にします。
+4. **Apply and Close**で適用します。生成ダイアログを開き、DBのPasswordを再入力して**Save password in Eclipse Secure Storage**をオンにし、ダイアログを閉じます。**Cancel**で閉じても保存します。
+5. 表示される入力画面で、Eclipseの保存情報を暗号化するためのマスターパスワードを設定または入力します。その後、生成ダイアログを開き直してPasswordが復元されることを確認します。
+
+**UI PromptでもSecure Storageによる暗号化保存を利用します。**変更するのはマスターパスワードの取得方法です。この設定はEclipse全体で新しく保存する情報に影響し、既存の保存情報は自動移行されません。詳しくは[EclipseのSecure Storage設定](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-prefs.htm)と[動作の説明](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-works.htm)を参照してください。
+
 ## 既存クラスの差分プレビューと更新
 
 既存クラスと同じソースフォルダー・パッケージ・クラス名を指定して**Preview**を押すと、変更前の**Current saved class**と変更後の**Proposed update**を並べたEclipseの比較画面を開きます。比較画面は読み取り専用です。確認して比較画面を閉じ、生成ダイアログの**Update**を押すと反映します。**Compare changes...**から再確認でき、**Proposed Java**では更新後のファイル全体を確認できます。比較画面を閉じただけの場合や、生成ダイアログをキャンセルした場合はJavaファイルを変更しません。変更がなければUpdateは無効になります。

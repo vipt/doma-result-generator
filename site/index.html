@@ -50,6 +50,16 @@
 .*Datetime$=java.time.LocalDateTime</code></pre>
       <p><code>CREATED_DATETIME</code>から生成する<code>createdDatetime</code>のようなJavaのプロパティ名に照合し、上から最初に一致したルールをJDBCの推定型より優先します。</p>
 
+      <h3 id="macos-password-ja">macOSでパスワードを保存できない場合</h3>
+      <p>保存時に<code>Connection settings or the saved password could not be updated.</code>と表示される場合、キーチェーンから暗号化用のマスターパスワードを取得できていない可能性があります。入力画面が出ないまま失敗する場合もあります。Eclipseのログに<code>OSXProvider</code>のエラー（例：<code>Result: -25300</code>）がある場合は、次の手順を試してください。</p>
+      <ol>
+        <li>Eclipseの設定（通常<kbd>⌘,</kbd>）から<strong>General → Security → Secure Storage → Password</strong>を開きます。</li>
+        <li><strong>Master password providers</strong>で<strong>OS X Keystore Integration</strong>のチェックを外し、<strong>UI Prompt</strong>を有効にして<strong>Apply and Close</strong>を押します。</li>
+        <li>生成ダイアログでDBのPasswordを再入力し、<strong>Save password in Eclipse Secure Storage</strong>をオンにして閉じます。<strong>Cancel</strong>でも保存します。</li>
+        <li>表示される画面で、Eclipseの保存情報を暗号化するためのマスターパスワードを設定または入力します。生成ダイアログを開き直して、Passwordが復元されることを確認します。</li>
+      </ol>
+      <p class="note"><strong>UI PromptでもSecure Storageへの暗号化保存を利用します。</strong>変更するのはマスターパスワードの取得方法です。設定はEclipse全体で新しく保存する情報に影響し、既存の保存情報は自動移行されません。<a href="https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-prefs.htm">Eclipse公式の設定説明</a>と<a href="https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-works.htm">動作の説明</a>も参照してください。</p>
+
       <h3>対応環境と現在の範囲</h3>
       <p><strong>Eclipse 2023-12 / 4.30以降、Java 17以上</strong>を対象にしています。Java開発機能（JDT）、対象プロジェクトのDoma 2設定、JDBCドライバーを用意してください。</p>
       <p class="note">初期プレビュー版です。H2とDoma 2.57.0で生成・更新処理をテストしています。他DBはJDBCドライバーの実行前メタデータ取得に依存します。単純な<code>/*%expand*/</code>は自動変換し、条件分岐・ループなどは<strong>Metadata SQL</strong>で具体的なSELECTに置き換えます。DBエラーは<strong>Error details...</strong>でORA番号・失敗段階を確認できます。旧版クラスの生成元が不明なフィールドは削除せず残します。比較画面の手動操作と、各DBでの検証は今後の確認項目です。</p>
@@ -75,6 +85,15 @@
         <li>Use <strong>Jump to Doma SQL</strong> on a Java DAO method call to open its external SQL.</li>
         <li>Remember JDBC connection defaults per project, with optional encrypted password storage in Eclipse Secure Storage.</li>
       </ul>
+      <h3 id="macos-password-en">macOS: password saving fails</h3>
+      <p>If saving shows <code>Connection settings or the saved password could not be updated.</code>, Eclipse may be unable to retrieve its encryption master password from the macOS keychain. This can fail without a prompt. If the Eclipse log contains an <code>OSXProvider</code> error, such as <code>Result: -25300</code>, try these steps:</p>
+      <ol>
+        <li>Open Eclipse settings/preferences (usually <kbd>⌘,</kbd>), then <strong>General → Security → Secure Storage → Password</strong>.</li>
+        <li>Under <strong>Master password providers</strong>, clear <strong>OS X Keystore Integration</strong>, enable <strong>UI Prompt</strong>, and select <strong>Apply and Close</strong>.</li>
+        <li>In the generator, re-enter the database Password, select <strong>Save password in Eclipse Secure Storage</strong>, and close the dialog. <strong>Cancel</strong> also saves these settings.</li>
+        <li>In the prompt, create or enter the master password for encrypting Eclipse's saved information. Reopen the generator to confirm the database Password is restored.</li>
+      </ol>
+      <p class="note"><strong>UI Prompt still uses encrypted Eclipse Secure Storage.</strong> Only the way Eclipse obtains the master password changes. The setting affects newly saved information throughout Eclipse; existing entries are not migrated automatically. See the official <a href="https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-prefs.htm">preferences guide</a> and <a href="https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-works.htm">how Secure Storage works</a>.</p>
       <p>Requires Eclipse Java IDE <strong>2023-12 / 4.30+</strong>, <strong>Java 17+</strong>, a Doma 2 project and a JDBC driver.</p>
       <p class="note">Initial preview. Core generation and update tests use H2 and Doma 2.57.0. Other databases depend on pre-execution JDBC metadata support. Simple <code>/*%expand*/</code> directives are prepared automatically; replace conditions and loops with a concrete SELECT in Metadata SQL. <strong>Error details...</strong> reports Oracle numbers and failure stages. Uncertain unmarked legacy fields are retained. Manual comparison-dialog checks and database-specific validation remain open.</p>
       <p class="links"><a href="https://github.com/vipt/doma-result-generator/blob/main/README.md">Documentation</a><a href="https://github.com/vipt/doma-result-generator">Source</a><a href="https://github.com/vipt/doma-result-generator/issues">Issues</a></p>

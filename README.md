@@ -25,6 +25,18 @@ Driver JAR paths, driver class, JDBC URL and username are remembered per project
 
 Raw driver exceptions are not logged or displayed, since they may include connection details. Driver errors show the operation stage, SQLState, vendor error code and Oracle ORA number when available. **Error details...** shows these codes and phase-specific guidance; generator errors give actionable explanations. Use your normal trusted driver and database connection settings. Driver-specific timeout and SSL settings can be supplied in the JDBC URL according to the driver's documentation.
 
+### macOS: password saving fails
+
+If saving shows `Connection settings or the saved password could not be updated.`, Eclipse may be unable to retrieve the Secure Storage master password from the macOS keychain. This can fail without displaying a password prompt or keychain permission dialog. If the Eclipse log contains an `OSXProvider` error, such as `Could not obtain password. Result: -25300`, try switching to **UI Prompt**:
+
+1. Open Eclipse settings/preferences, usually with `⌘,` on macOS.
+2. Open **General → Security → Secure Storage → Password**.
+3. Under **Master password providers**, clear **OS X Keystore Integration** and enable **UI Prompt**.
+4. Select **Apply and Close**. Open the generator, re-enter the database Password, select **Save password in Eclipse Secure Storage**, and close the dialog. Closing with **Cancel** also saves these settings.
+5. In the prompt, create or enter the master password used to encrypt Eclipse's saved information. Reopen the generator to confirm the database Password is restored.
+
+**UI Prompt still uses encrypted Eclipse Secure Storage.** Only the way Eclipse obtains its master password changes. This setting affects newly saved information throughout Eclipse; existing entries are not migrated automatically. See the official [Secure Storage preferences](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-prefs.htm) and [how Secure Storage works](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-works.htm).
+
 ## Example
 
 ```sql
