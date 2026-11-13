@@ -11,7 +11,7 @@ It also opens a DAO's external SQL file directly from a Java method call.
 ## Workflow
 
 1. Save a `.sql` file in an Eclipse Java project.
-2. In Package Explorer or Project Explorer, right-click the file and select **Generate Doma Result Class...**.
+2. Right-click the SQL file in Package Explorer or Project Explorer, or inside its open SQL editor, and select **Generate Doma Result Class...**.
 3. Select your JDBC driver JAR(s), and enter the driver class, URL and credentials. Drivers are supplied separately, so vendor libraries are not redistributed.
 4. Select a Java source folder, package and class name. Optionally select a UTF-8 type mapping file; `name.properties` in the project root is initially selected when present.
 5. Review the **Metadata SQL** tab. It starts with the saved SQL file. Changes made here are used for metadata lookup and do not change the SQL file.
@@ -19,7 +19,11 @@ It also opens a DAO's external SQL file directly from a Java method call.
 
 The plug-in uses `Connection.prepareStatement(...).getMetaData()`. It does not call `execute`, `executeQuery` or fetch result rows. Some drivers may communicate with the database while preparing/describing a statement. No automatic execution fallback is performed when metadata is unavailable.
 
-Driver JAR paths, driver class, JDBC URL and username are remembered per project in the local workspace when the dialog closes, including **Cancel**. They are restored on the next opening and after restarting Eclipse. They are not written into project files. Source folder, package, class name and edited Metadata SQL are not remembered.
+Generated fields are private, with public getters/setters. Annotations and property types use imports and short names, including `@Entity`, `@Column`, `BigDecimal` and `LocalDateTime`. Types in `java.lang` or the entity's own package do not need imports. If a short name conflicts with another type or retained handwritten code, that reference stays qualified.
+
+Driver JAR paths, driver class, JDBC URL, username and Package are remembered per project in the local workspace when the dialog closes, including **Cancel**. They are restored on the next opening and after restarting Eclipse. Package defaults to the exact previously entered text, or `com.example.dto` on first use. They are not written into project files. Source folder, class name and edited Metadata SQL are not remembered.
+
+From a SQL editor, the generator reads the current Eclipse text buffer, including unsaved edits, without saving the file. An editor whose unsaved content cannot be read asks you to save first. From Explorer, it reads the saved SQL file.
 
 **Save password in Eclipse Secure Storage** is off by default. Select it to save the Password field using [Eclipse encrypted secure preferences](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.isv/guide/secure_storage_architecture.htm); Eclipse may ask to unlock its storage. Clear it, or empty the Password field, and close the dialog to remove the saved password. Passwords are never saved in ordinary workspace preferences. Changing the driver class, URL or username clears the restored password. Use the separate Username and Password fields: URLs with embedded credentials, such as Oracle `user/password@...`, query `password=...`, or URL user info, are not remembered. If Secure Storage cannot be read or updated, the dialog reports it without falling back to plaintext.
 
@@ -55,14 +59,17 @@ For a JDBC driver that reports those labels in upper case, generation produces:
 ```java
 package com.example.dto;
 
-@org.seasar.doma.Entity
+import org.seasar.doma.Column;
+import org.seasar.doma.Entity;
+
+@Entity
 public class EmployeeResult {
     /** @domaGenerated */
-    @org.seasar.doma.Column(name = "EMPLOYEE_ID")
-    java.lang.Long employeeId;
+    @Column(name = "EMPLOYEE_ID")
+    private Long employeeId;
 
-    @org.seasar.doma.Column(name = "EMPLOYEE_NAME")
-    java.lang.String employeeName;
+    @Column(name = "EMPLOYEE_NAME")
+    private String employeeName;
 
     // Other fields and public getters/setters are generated as well.
 }
@@ -171,8 +178,12 @@ The Doma-Gen-style file is UTF-8 and contains ordered `property-name-regex=JavaT
 For example, `CREATED_DATETIME` becomes the Java property `createdDatetime` and is generated as `java.time.LocalDateTime`, even when JDBC's default mapping would be `LocalDate`:
 
 ```java
-@org.seasar.doma.Column(name = "CREATED_DATETIME")
-java.time.LocalDateTime createdDatetime;
+import java.time.LocalDateTime;
+import org.seasar.doma.Column;
+
+// Inside the entity class
+@Column(name = "CREATED_DATETIME")
+private LocalDateTime createdDatetime;
 ```
 
 - Rules match the **final Java property name**, including any collision suffix. They do not match the raw SQL column label. `@Column` retains that label.

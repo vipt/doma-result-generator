@@ -105,6 +105,50 @@ class GeneratorTest {
         compile(List.of(file), true);
     }
 
+    @Test void usesPrivateFieldsAndShortNamesForAllGeneratedTypes() throws Exception {
+        String source = new EntityGenerator().generate("example", "Result", List.of(
+                new ResultColumn("ID", "java.lang.Long"), new ResultColumn("NAME", "java.lang.String"),
+                new ResultColumn("AMOUNT", "java.math.BigDecimal"), new ResultColumn("CREATED_AT", "java.time.LocalDateTime"),
+                new ResultColumn("CONTENT", "byte[]")));
+        for (String type : List.of("org.seasar.doma.Entity", "org.seasar.doma.Column", "java.math.BigDecimal", "java.time.LocalDateTime")) {
+            assertTrue(source.contains("import " + type + ";"));
+        }
+        assertTrue(source.contains("@Entity"));
+        assertTrue(source.contains("@Column(name = \"ID\")"));
+        assertTrue(source.contains("private Long id;"));
+        assertTrue(source.contains("private String name;"));
+        assertTrue(source.contains("private BigDecimal amount;"));
+        assertTrue(source.contains("private LocalDateTime createdAt;"));
+        assertTrue(source.contains("private byte[] content;"));
+        assertTrue(source.contains("public BigDecimal getAmount()"));
+        assertTrue(source.contains("setCreatedAt(LocalDateTime createdAt)"));
+        assertFalse(source.contains("java.lang."));
+        Path file = directory.resolve("Result.java");
+        Files.writeString(file, source);
+        compile(List.of(file), true);
+    }
+
+    @Test void handlesTypeNameCollisionsWithoutAmbiguousImports() throws Exception {
+        String source = new EntityGenerator().generate("example", "Result", List.of(
+                new ResultColumn("SQL_DATE", "java.sql.Date"), new ResultColumn("UTIL_DATE", "java.util.Date")));
+        assertTrue(source.contains("import java.sql.Date;"));
+        assertFalse(source.contains("import java.util.Date;"));
+        assertTrue(source.contains("private Date sqlDate;"));
+        assertTrue(source.contains("private java.util.Date utilDate;"));
+        Path file = directory.resolve("Result.java");
+        Files.writeString(file, source);
+        compile(List.of(file), false);
+    }
+
+    @Test void entityNameCanCollideWithAnAnnotationName() throws Exception {
+        String source = new EntityGenerator().generate("example", "Column", List.of(new ResultColumn("ID", "java.lang.Long")));
+        assertTrue(source.contains("@org.seasar.doma.Column(name"));
+        assertFalse(source.contains("import org.seasar.doma.Column;"));
+        Path file = directory.resolve("Column.java");
+        Files.writeString(file, source);
+        compile(List.of(file), true);
+    }
+
     @Test void nameRulesGenerateCompilableDateTimeAndDomainPropertiesAndMapActualRows() throws Exception {
         try (Connection connection = database()) {
             var rules = TypeNameMappings.parse(".*Datetime$=java.time.LocalDateTime\nsalaryValue=example.Salary\n");
@@ -249,6 +293,7 @@ class GeneratorTest {
                     "-d", directory.toString(), "-s", directory.toString()));
             if (domaProcessing) options.addAll(List.of("-processor",
                     "org.seasar.doma.internal.apt.processor.DomainProcessor,org.seasar.doma.internal.apt.processor.EntityProcessor,org.seasar.doma.internal.apt.processor.DaoProcessor"));
+            else options.add("-proc:none");
             Boolean success = compiler.getTask(null, manager, diagnostics, options, null,
                     manager.getJavaFileObjectsFromPaths(sources)).call();
             assertEquals(Boolean.TRUE, success, diagnostics.getDiagnostics().toString());

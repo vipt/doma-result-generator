@@ -136,7 +136,7 @@ final class GenerateDialog extends TitleAreaDialog {
         sourceFolder.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
         roots.forEach(root -> sourceFolder.add(root.getPath().toPortableString()));
         sourceFolder.select(0);
-        packageName = fullField(config, "Package", "com.example.dto", false);
+        packageName = fullField(config, "Package", connectionSettings.loadPackageName(), false);
         String base = JavaNames.fieldName(sqlFile.getName().replaceFirst("\\.sql$", ""));
         className = fullField(config, "Class name", Character.toUpperCase(base.charAt(0)) + base.substring(1) + "Result", false);
         Composite sqlPage = page("Metadata SQL", 1);
@@ -370,6 +370,7 @@ final class GenerateDialog extends TitleAreaDialog {
     public boolean close() {
         if (password != null && !password.isDisposed()) {
             try {
+                connectionSettings.savePackageName(packageName.getText());
                 connectionSettings.save(new ConnectionSettingsStore.Connection(jars.getText(), driverClass.getText().trim(),
                         jdbcUrl.getText().trim(), user.getText()), savePassword.getSelection(),
                         passwordReadFailed && password.getText().isEmpty() ? null : password.getText());

@@ -2,6 +2,7 @@
 package io.github.domaresult.merge;
 
 import io.github.domaresult.core.GenerationException;
+import io.github.domaresult.core.JavaImports;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -27,7 +28,8 @@ public final class EntityMerger {
     }
 
     public Result merge(String current, String generated, Map<String, String> compilerOptions) {
-        Model desired = new Model(generated, null, compilerOptions);
+        Model desiredInput = new Model(generated, null, compilerOptions);
+        Model desired = new Model(qualifyGenerated(desiredInput), null, compilerOptions);
         Model existing = new Model(current, desired.type.getName().getIdentifier(), compilerOptions);
         if (!existing.packageName().equals(desired.packageName())) throw conflict("The existing package does not match the target package.");
         Annotation entity = existing.annotation(existing.type, "org.seasar.doma.Entity");
@@ -80,6 +82,7 @@ public final class EntityMerger {
                     edits.add(new Patch(literal.getStartPosition(), literal.getLength(), desired.text(desired.columnLiteral(wanted.node))));
                 }
                 existing.addMarker(edits, old.node);
+                existing.makePrivate(edits, old.node);
             }
             String suffix = suffix(name);
             mergeGetter(existing, desired, old, wanted, name, "get" + suffix, legacy && adopt, additions, edits);
@@ -134,8 +137,93 @@ public final class EntityMerger {
             edits.add(new Patch(close, 0, block.toString()));
         }
         String merged = apply(current, edits);
+        merged = shortenGenerated(new Model(merged, desired.type.getName().getIdentifier(), compilerOptions));
         new Model(merged, desired.type.getName().getIdentifier(), compilerOptions);
         return new Result(merged, notes);
+    }
+
+    private static List<ASTNode> generatedReferences(Model model) {
+        List<ASTNode> references = new ArrayList<>();
+        Annotation entity = model.annotation(model.type, "org.seasar.doma.Entity");
+        if (entity != null) references.add(entity.getTypeName());
+        for (Field field : model.fields.values()) {
+            if (!managed(field.node)) continue;
+            references.add(field.node.getType());
+            Annotation column = model.annotation(field.node, "org.seasar.doma.Column");
+            if (column != null) references.add(column.getTypeName());
+        }
+        for (MethodDeclaration method : model.type.getMethods()) {
+            if (!managed(method)) continue;
+            if (method.getReturnType2() != null) references.add(method.getReturnType2());
+            for (Object item : method.parameters()) references.add(((SingleVariableDeclaration) item).getType());
+        }
+        return references;
+    }
+
+    private static String referenceType(Model model, ASTNode node) {
+        return node instanceof Type type ? model.typeName(type) : model.resolve(((Name) node).getFullyQualifiedName());
+    }
+
+    private static String qualifyGenerated(Model model) {
+        List<Patch> edits = new ArrayList<>();
+        for (ASTNode node : generatedReferences(model)) {
+            String name = referenceType(model, node);
+            if (!model.text(node).equals(name)) model.replaceType(edits, node, name);
+        }
+        return apply(model.source, edits);
+    }
+
+    private static String shortenGenerated(Model model) {
+        JavaImports imports = new JavaImports(model.packageName(), model.type.getName().getIdentifier());
+        model.imports.forEach(imports::reserve);
+        for (Object item : model.unit.imports()) {
+            ImportDeclaration declaration = (ImportDeclaration) item;
+            if (declaration.isStatic() && !declaration.isOnDemand()) {
+                String name = declaration.getName().getFullyQualifiedName();
+                imports.block(name.substring(name.lastIndexOf('.') + 1));
+            }
+        }
+        List<ASTNode> references = generatedReferences(model);
+        Set<ASTNode> ownedReferences = new HashSet<>(references);
+        model.unit.accept(new ASTVisitor() {
+            @Override public boolean preVisit2(ASTNode node) {
+                if (ownedReferences.contains(node)) return false;
+                preVisit(node);
+                return true;
+            }
+            private void reserve(String name) {
+                if (model.imports.containsKey(name)) imports.reserve(name, model.imports.get(name));
+                else if (model.resolve(name).startsWith("java.lang.")) imports.reserve(name, model.resolve(name));
+                else imports.block(name);
+            }
+            @Override public void preVisit(ASTNode node) {
+                if (node instanceof AbstractTypeDeclaration declaration) imports.block(declaration.getName().getIdentifier());
+                else if (node instanceof TypeParameter parameter) imports.block(parameter.getName().getIdentifier());
+                else if (node instanceof SimpleType type && type.getName().isSimpleName()) reserve(type.getName().getFullyQualifiedName());
+                else if (node instanceof Annotation annotation && annotation.getTypeName().isSimpleName()
+                        && !ownedReferences.contains(annotation.getTypeName())) reserve(annotation.getTypeName().getFullyQualifiedName());
+                else if (node instanceof MethodInvocation call && call.getExpression() instanceof SimpleName name) reserve(name.getIdentifier());
+                else if (node instanceof QualifiedName name && name.getQualifier() instanceof SimpleName qualifier
+                        && Character.isUpperCase(qualifier.getIdentifier().codePointAt(0))) reserve(qualifier.getIdentifier());
+            }
+        });
+        List<Patch> edits = new ArrayList<>();
+        for (ASTNode node : references) {
+            String name = imports.use(referenceType(model, node));
+            if (!model.text(node).equals(name)) model.replaceType(edits, node, name);
+        }
+        List<String> additions = imports.imports().stream().filter(name -> !model.imports.containsValue(name)).toList();
+        if (!additions.isEmpty()) {
+            String block = String.join(model.newline, additions.stream().map(name -> "import " + name + ";").toList()) + model.newline;
+            if (!model.unit.imports().isEmpty()) {
+                edits.add(new Patch(((ImportDeclaration) model.unit.imports().get(0)).getStartPosition(), 0, block));
+            } else {
+                PackageDeclaration pkg = model.unit.getPackage();
+                int offset = pkg == null ? model.type.getStartPosition() : pkg.getStartPosition() + pkg.getLength();
+                edits.add(new Patch(offset, 0, model.newline + model.newline + block));
+            }
+        }
+        return apply(model.source, edits);
     }
 
     private void mergeGetter(Model old, Model desired, Field field, Field wanted, String name, String methodName,
@@ -360,6 +448,15 @@ public final class EntityMerger {
             if (doc == null) edits.add(new Patch(node.getStartPosition(), 0, "/** " + MARKER + " */" + newline + indent));
             else edits.add(new Patch(doc.getStartPosition() + doc.getLength() - 2, 0, newline + indent + " * " + MARKER + newline + indent + " "));
         }
+        void makePrivate(List<Patch> edits, FieldDeclaration field) {
+            for (Object item : field.modifiers()) {
+                if (item instanceof Modifier modifier && (modifier.isPrivate() || modifier.isPublic() || modifier.isProtected())) {
+                    if (!modifier.isPrivate()) edits.add(new Patch(modifier.getStartPosition(), modifier.getLength(), "private"));
+                    return;
+                }
+            }
+            edits.add(new Patch(field.getType().getStartPosition(), 0, "private "));
+        }
         List<Comment> commentsWithin(ASTNode node) {
             List<Comment> comments = new ArrayList<>();
             for (Object item : unit.getCommentList()) {
@@ -369,7 +466,7 @@ public final class EntityMerger {
             }
             return comments;
         }
-        void replaceType(List<Patch> edits, Type node, String type) {
+        void replaceType(List<Patch> edits, ASTNode node, String type) {
             StringBuilder comments = new StringBuilder();
             for (Comment comment : commentsWithin(node)) comments.append(text(comment)).append(comment.isLineComment() ? newline + indentAt(node.getStartPosition()) : " ");
             edits.add(new Patch(node.getStartPosition(), node.getLength(), comments + type));

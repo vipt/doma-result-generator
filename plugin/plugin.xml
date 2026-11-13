@@ -19,12 +19,18 @@
     <menuContribution locationURI="popup:org.eclipse.ui.popup.any?after=additions">
       <command commandId="io.github.domaresult.generate" style="push">
         <visibleWhen checkEnabled="false">
-          <with variable="activeMenuSelection">
+          <or>
+            <with variable="activeMenuSelection">
+              <and>
+                <count value="1"/>
+                <iterate ifEmpty="false"><adapt type="org.eclipse.core.resources.IFile"><test property="org.eclipse.core.resources.name" value="*.sql"/></adapt></iterate>
+              </and>
+            </with>
             <and>
-              <count value="1"/>
-              <iterate ifEmpty="false"><adapt type="org.eclipse.core.resources.IFile"><test property="org.eclipse.core.resources.name" value="*.sql"/></adapt></iterate>
+              <with variable="activePart"><instanceof value="org.eclipse.ui.IEditorPart"/></with>
+              <with variable="activeEditorInput"><adapt type="org.eclipse.core.resources.IFile"><test property="org.eclipse.core.resources.name" value="*.sql"/></adapt></with>
             </and>
-          </with>
+          </or>
         </visibleWhen>
       </command>
     </menuContribution>

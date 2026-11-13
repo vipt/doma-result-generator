@@ -47,6 +47,13 @@ final class ConnectionSettingsStore {
 
     boolean remembersPassword() { return preferences.getBoolean("rememberPassword", false); }
 
+    String loadPackageName() { return preferences.get("packageName", "com.example.dto"); }
+
+    void savePackageName(String value) throws IOException {
+        preferences.put("packageName", value);
+        flush();
+    }
+
     String loadPassword(Connection connection) throws IOException {
         if (!remembersPassword() || !binding(connection).equals(preferences.get("passwordBinding", ""))) return "";
         try {

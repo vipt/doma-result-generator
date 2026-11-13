@@ -26,8 +26,9 @@ class TypeNameMappingsTest {
             assertEquals(List.of(new ResultColumn("CREATED_DATETIME", "java.time.LocalDateTime"),
                     new ResultColumn("OTHER_DATE", "java.time.LocalDate")), columns);
             String source = new EntityGenerator().generate("example", "Result", columns);
-            assertTrue(source.contains("java.time.LocalDateTime createdDatetime;"));
-            assertTrue(source.contains("@org.seasar.doma.Column(name = \"CREATED_DATETIME\")"));
+            assertTrue(source.contains("import java.time.LocalDateTime;"));
+            assertTrue(source.contains("private LocalDateTime createdDatetime;"));
+            assertTrue(source.contains("@Column(name = \"CREATED_DATETIME\")"));
         }
     }
 
@@ -81,7 +82,7 @@ class TypeNameMappingsTest {
                     "example.Result", rules);
             assertEquals("java.lang.Integer", columns.get(0).javaType());
             assertEquals("java.lang.Long", columns.get(1).javaType());
-            assertTrue(new EntityGenerator().generate("example", "Result", columns).contains("java.lang.Long userId2;"));
+            assertTrue(new EntityGenerator().generate("example", "Result", columns).contains("private Long userId2;"));
         }
     }
 

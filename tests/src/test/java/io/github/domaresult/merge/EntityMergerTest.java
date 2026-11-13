@@ -58,45 +58,45 @@ class EntityMergerTest {
         assertTrue(merged.contains(manual));
         assertTrue(merged.contains("/* License header: keep */"));
         assertTrue(merged.contains("import java.util.Locale;"));
-        assertTrue(merged.contains("java.lang.String name;"));
+        assertTrue(merged.contains("private String name;"));
         assertTrue(merged.contains("getName()"));
         compile(merged);
     }
 
     @Test void updatesFieldAndSimpleAccessorTypesWhileKeepingAllComments() throws Exception {
         String source = generated(column("ID", "java.lang.Integer"))
-                .replace("java.lang.Integer id;", "java.lang.Integer /* field note */ id; // trailing field note")
+                .replace("Integer id;", "Integer /* field note */ id; // trailing field note")
                 .replace("return id;", "// getter explanation\n        return /* inline return */ id;")
                 .replace("this.id = id;", "/* setter explanation */ this.id = id;");
         String merged = merge(source, generated(column("ID", "java.lang.Long")));
         for (String comment : List.of("/* field note */", "// trailing field note", "// getter explanation", "/* inline return */", "/* setter explanation */")) {
             assertTrue(merged.contains(comment), comment);
         }
-        assertTrue(merged.contains("java.lang.Long /* field note */ id;"));
-        assertTrue(merged.contains("public java.lang.Long getId()"));
-        assertTrue(merged.contains("setId(java.lang.Long id)"));
+        assertTrue(merged.contains("Long /* field note */ id;"));
+        assertTrue(merged.contains("public Long getId()"));
+        assertTrue(merged.contains("setId(Long id)"));
         compile(merged);
     }
 
     @Test void preservesCommentsInsideQualifiedTypeWhenReplacingTheType() throws Exception {
         String source = generated(column("ID", "java.lang.Integer"))
-                .replace("java.lang.Integer id;", "java./* special type note */lang.Integer id;");
+                .replace("Integer id;", "java./* special type note */lang.Integer id;");
         String merged = merge(source, generated(column("ID", "java.lang.Long")));
-        assertTrue(merged.contains("/* special type note */ java.lang.Long id;"));
+        assertTrue(merged.contains("/* special type note */ Long id;"));
         compile(merged);
     }
 
     @Test void removesOwnedObsoleteMembersAndKeepsTheirUserComments() throws Exception {
         String source = generated(column("ID", "java.lang.Integer"), column("OLD_VALUE", "java.lang.String"))
-                .replace("java.lang.String oldValue;", "java.lang.String oldValue; // keep trailing old note")
+                .replace("String oldValue;", "String oldValue; // keep trailing old note")
                 .replace("return oldValue;", "// keep getter note\n        return oldValue;")
                 .replace("this.oldValue = oldValue;", "/* keep setter note */ this.oldValue = oldValue;")
-                .replace("@org.seasar.doma.Column(name = \"OLD_VALUE\")", "@org.seasar.doma.Column(name = \"OLD_VALUE\") /* keep column note */");
+                .replace("@Column(name = \"OLD_VALUE\")", "@Column(name = \"OLD_VALUE\") /* keep column note */");
         source = custom(source, "\n    /** Handwritten helper. */\n    public int answer() { return 42; }\n");
         String merged = merge(source, generated(column("ID", "java.lang.Integer")));
         assertFalse(merged.contains("getOldValue()"));
         assertFalse(merged.contains("setOldValue("));
-        assertFalse(merged.contains("java.lang.String oldValue;"));
+        assertFalse(merged.contains("String oldValue;"));
         for (String note : List.of("// keep trailing old note", "// keep getter note", "/* keep setter note */", "/* keep column note */", "/** Handwritten helper. */")) {
             assertTrue(merged.contains(note), note);
         }
@@ -106,8 +106,8 @@ class EntityMergerTest {
 
     @Test void preservesUserJavadocOnRemovedGeneratedMembersAndRemovesOnlyOwnershipTag() throws Exception {
         String source = generated(column("ID", "java.lang.Integer"), column("OLD", "java.lang.String"))
-                .replace("/** @domaGenerated */\n    @org.seasar.doma.Column(name = \"OLD\")",
-                        "/** User note about old field.\n     * @domaGenerated\n     */\n    @org.seasar.doma.Column(name = \"OLD\")");
+                .replace("/** @domaGenerated */\n    @Column(name = \"OLD\")",
+                        "/** User note about old field.\n     * @domaGenerated\n     */\n    @Column(name = \"OLD\")");
         String merged = merge(source, generated(column("ID", "java.lang.Integer")));
         assertTrue(merged.contains("User note about old field."));
         assertEquals(merged, merge(merged, generated(column("ID", "java.lang.Integer"))));
@@ -147,12 +147,12 @@ class EntityMergerTest {
 
     @Test void constructorsClassAnnotationsAndOtherTopLevelTypesArePreserved() throws Exception {
         String source = generated(column("ID", "java.lang.Integer"))
-                .replace("@org.seasar.doma.Entity", "@Deprecated\n@org.seasar.doma.Entity");
+                .replace("@Entity", "@Deprecated\n@Entity");
         String constructors = "\n    public Result() {}\n    /** Custom constructor. */\n    public Result(Integer value) { this.id = value; }\n";
         source = custom(source, constructors) + "\nclass HandwrittenCompanion { /* keep */ }\n";
         String merged = merge(source, generated(column("ID", "java.lang.Integer"), column("NAME", "java.lang.String")));
         assertTrue(merged.contains(constructors));
-        assertTrue(merged.contains("@Deprecated\n@org.seasar.doma.Entity"));
+        assertTrue(merged.contains("@Deprecated\n@Entity"));
         assertTrue(merged.endsWith("class HandwrittenCompanion { /* keep */ }\n"));
         compile(merged);
     }
@@ -182,7 +182,7 @@ class EntityMergerTest {
         source = custom(source, overload);
         String merged = merge(source, generated(column("ID", "java.lang.Long")));
         assertTrue(merged.contains(overload));
-        assertTrue(merged.contains("setId(java.lang.Long id)"));
+        assertTrue(merged.contains("setId(Long id)"));
         compile(merged);
     }
 
@@ -195,14 +195,14 @@ class EntityMergerTest {
     @Test void adoptsMatchingLegacyMembersAndPreservesLegacyCommentsAndUncertainObsoleteFields() throws Exception {
         String source = generated(column("ID", "java.lang.Integer"), column("OLD", "java.lang.String"))
                 .replace("    /** @domaGenerated */\n", "")
-                .replace("@org.seasar.doma.Column(name = \"ID\")", "/** Customer identifier. */\n    @org.seasar.doma.Column(name = \"ID\")");
+                .replace("@Column(name = \"ID\")", "/** Customer identifier. */\n    @Column(name = \"ID\")");
         String helper = "\n    // manual\n    public String describe() { return \"kept\"; }\n";
         source = custom(source, helper);
         var result = new EntityMerger().merge(source, generated(column("ID", "java.lang.Long")));
         assertTrue(result.source().contains("Customer identifier."));
         assertTrue(result.source().contains(helper));
-        assertTrue(result.source().contains("java.lang.String old;"));
-        assertTrue(result.source().contains("java.lang.Long id;"));
+        assertTrue(result.source().contains("String old;"));
+        assertTrue(result.source().contains("private Long id;"));
         assertEquals(1, result.notes().size());
         assertEquals(result.source(), merge(result.source(), generated(column("ID", "java.lang.Long"))));
         compile(result.source());
@@ -215,7 +215,7 @@ class EntityMergerTest {
 
     @Test void anUnmarkedFieldInAnAlreadyManagedClassIsNotSilentlyReadopted() {
         String source = generated(column("ID", "java.lang.Integer"))
-                .replace("/** @domaGenerated */\n    @org.seasar.doma.Column", "/** Handwritten field now. */\n    @org.seasar.doma.Column");
+                .replace("/** @domaGenerated */\n    @Column", "/** Handwritten field now. */\n    @Column");
         assertThrows(GenerationException.class, () -> merge(source, generated(column("ID", "java.lang.Long"))));
     }
 
@@ -245,16 +245,16 @@ class EntityMergerTest {
         assertThrows(GenerationException.class, () -> merge(source.replace("return id;", "return ???;"), source));
         assertThrows(GenerationException.class, () -> merge(source.replace("package example;", "package wrong;"), source));
         assertThrows(GenerationException.class, () -> merge(source.replace("class Result", "class Other"), source));
-        assertThrows(GenerationException.class, () -> merge(source.replace("@org.seasar.doma.Entity", "@org.seasar.doma.Entity(immutable = true)"), source));
+        assertThrows(GenerationException.class, () -> merge(source.replace("@Entity", "@Entity(immutable = true)"), source));
     }
 
     @Test void keepsCustomInitializersAndAnnotationsAndBlocksRemovingThem() {
         String source = generated(column("ID", "java.lang.Integer"), column("NAME", "java.lang.String"))
-                .replace("java.lang.String name;", "java.lang.String name = \"default\";");
+                .replace("String name;", "String name = \"default\";");
         assertEquals(source, merge(source, source));
         assertThrows(GenerationException.class, () -> merge(source, generated(column("ID", "java.lang.Integer"))));
         String annotated = generated(column("ID", "java.lang.Integer"), column("NAME", "java.lang.String"))
-                .replace("java.lang.String name;", "@Deprecated java.lang.String name;");
+                .replace("private String name;", "@Deprecated private String name;");
         assertThrows(GenerationException.class, () -> merge(annotated, generated(column("ID", "java.lang.Integer"))));
     }
 
@@ -263,7 +263,7 @@ class EntityMergerTest {
                 .replace("    ", "\t").replace("\n", "\r\n");
         String merged = merge(source, generated(column("ID", "java.lang.Integer"), column("NAME", "java.lang.String")));
         assertFalse(merged.replace("\r\n", "").contains("\n"));
-        assertTrue(merged.contains("\r\n\tjava.lang.String name;"));
+        assertTrue(merged.contains("\r\n\tprivate String name;"));
         compile(merged);
     }
 
@@ -275,6 +275,107 @@ class EntityMergerTest {
         assertThrows(GenerationException.class, () -> plan.verifyCurrent("changed", 12, false));
         assertThrows(GenerationException.class, () -> plan.verifyCurrent("before", 13, false));
         assertFalse(new SourceUpdatePlan("same", "same", 12).hasChanges());
+    }
+
+    @Test void updatesOlderQualifiedPackageFieldsToPrivateAndImportsWhileKeepingManualCode() throws Exception {
+        String before = """
+                package example;
+                /** Generated from SELECT result metadata. */
+                @org.seasar.doma.Entity
+                public class Result {
+                    /** Amount comment.
+                     * @domaGenerated
+                     */
+                    @org.seasar.doma.Column(name = "AMOUNT")
+                    java.math.BigDecimal amount; // amount note
+                    /** @domaGenerated */
+                    public java.math.BigDecimal getAmount() { return amount; }
+                    /** @domaGenerated */
+                    public void setAmount(java.math.BigDecimal amount) { this.amount = amount; }
+                    /** Handwritten method. */
+                    public String display() { return amount == null ? "" : amount.toPlainString(); }
+                }
+                """;
+        String proposed = generated(column("AMOUNT", "java.math.BigDecimal"), column("CREATED_AT", "java.time.LocalDateTime"));
+        String merged = merge(before, proposed);
+        assertTrue(merged.contains("import java.math.BigDecimal;"));
+        assertTrue(merged.contains("import java.time.LocalDateTime;"));
+        assertTrue(merged.contains("import org.seasar.doma.Column;"));
+        assertTrue(merged.contains("import org.seasar.doma.Entity;"));
+        assertTrue(merged.contains("private BigDecimal amount; // amount note"));
+        assertTrue(merged.contains("public BigDecimal getAmount()"));
+        assertTrue(merged.contains("public void setAmount(BigDecimal amount)"));
+        assertTrue(merged.contains("/** Amount comment."));
+        assertTrue(merged.contains("public String display() { return amount == null ? \"\" : amount.toPlainString(); }"));
+        assertEquals(merged, merge(merged, proposed));
+        compile(merged);
+    }
+
+    @Test void newGeneratedImportDoesNotShadowAnExistingManualImport() throws Exception {
+        String before = generated(column("ID", "java.lang.Long"))
+                .replace("package example;", "package example;\nimport java.util.Date; // manual import");
+        String manual = "\n    @org.seasar.doma.Transient\n    private Date cacheDate; // handwritten\n";
+        before = custom(before, manual);
+        String proposed = generated(column("ID", "java.lang.Long"), column("DAY", "java.sql.Date"));
+        String merged = merge(before, proposed);
+        assertTrue(merged.contains("import java.util.Date; // manual import"));
+        assertTrue(merged.contains(manual));
+        assertTrue(merged.contains("private java.sql.Date day;"));
+        assertFalse(merged.contains("import java.sql.Date;"));
+        assertEquals(merged, merge(merged, proposed));
+        compile(merged);
+    }
+
+    @Test void nestedManualTypesAndWildcardStaticReferencesKeepTheirMeaning() throws Exception {
+        String before = generated(column("ID", "java.lang.Long"))
+                .replace("package example;", "package example;\nimport java.util.*;");
+        String manual = """
+
+            static class LocalDateTime { /* handwritten nested type */ }
+            public long parse(String text) { return Date.parse(text); }
+            """;
+        before = custom(before, manual);
+        String proposed = generated(column("ID", "java.lang.Long"), column("DAY", "java.sql.Date"),
+                column("CREATED_AT", "java.time.LocalDateTime"));
+        String merged = merge(before, proposed);
+        assertTrue(merged.contains(manual));
+        assertTrue(merged.contains("private java.sql.Date day;"));
+        assertTrue(merged.contains("private java.time.LocalDateTime createdAt;"));
+        assertFalse(merged.contains("import java.sql.Date;"));
+        assertFalse(merged.contains("import java.time.LocalDateTime;"));
+        compile(merged);
+    }
+
+    @Test void samePackageDomainNamesStayShortAndUnchanged() {
+        String source = generated(column("AMOUNT", "example.Amount"));
+        assertTrue(source.contains("private Amount amount;"));
+        assertFalse(source.contains("import example.Amount;"));
+        assertEquals(source, merge(source, source));
+    }
+
+    @Test void generatedImportsDoNotConflictWithExistingStaticTypeImports() throws Exception {
+        String before = generated(column("ID", "java.lang.Long"))
+                .replace("package example;", "package example;\nimport static example.DateHolder.Date;")
+                + "\nclass DateHolder { static class Date {} }\n";
+        String proposed = generated(column("ID", "java.lang.Long"), column("DAY", "java.sql.Date"));
+        String merged = merge(before, proposed);
+        assertTrue(merged.contains("import static example.DateHolder.Date;"));
+        assertFalse(merged.contains("import java.sql.Date;"));
+        assertTrue(merged.contains("private java.sql.Date day;"));
+        compile(merged);
+    }
+
+    @Test void changingATypedFieldAddsImportsAndKeepsItsCustomOverload() throws Exception {
+        String manual = "\n    public void setId(String text) { System.out.println(text); }\n";
+        String before = custom(generated(column("ID", "java.lang.Integer")), manual);
+        String proposed = generated(column("ID", "java.math.BigDecimal"));
+        String merged = merge(before, proposed);
+        assertTrue(merged.contains("import java.math.BigDecimal;"));
+        assertTrue(merged.contains("private BigDecimal id;"));
+        assertTrue(merged.contains("setId(BigDecimal id)"));
+        assertTrue(merged.contains(manual));
+        assertEquals(merged, merge(merged, proposed));
+        compile(merged);
     }
 
     private void compile(String source) throws Exception {

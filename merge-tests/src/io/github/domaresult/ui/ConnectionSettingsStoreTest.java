@@ -59,6 +59,26 @@ public class ConnectionSettingsStoreTest {
         for (String key : preferences.keys()) assertFalse(preferences.get(key, "").contains(PASSWORD));
     }
 
+    @Test public void remembersTheExactLastPackageAndKeepsProjectsSeparate() throws Exception {
+        assertEquals("com.example.dto", store.loadPackageName());
+        store.savePackageName("com.example.query.result");
+        var reopened = new ConnectionSettingsStore(preferences, () -> secure, "test/workspace/project");
+        assertEquals("com.example.query.result", reopened.loadPackageName());
+        var other = new ConnectionSettingsStore(preferences.node("other"), () -> secure, "test/workspace/other");
+        assertEquals("com.example.dto", other.loadPackageName());
+        other.savePackageName("other.dto");
+        assertEquals("com.example.query.result", reopened.loadPackageName());
+        reopened.savePackageName("");
+        assertEquals("", store.loadPackageName());
+    }
+
+    @Test public void packageIsKeptEvenWhenPasswordSavingFails() throws Exception {
+        var unavailable = new ConnectionSettingsStore(preferences, () -> null, "test/workspace/project");
+        unavailable.savePackageName("example.report");
+        assertThrows(IOException.class, () -> unavailable.save(connection, true, PASSWORD));
+        assertEquals("example.report", store.loadPackageName());
+    }
+
     @Test public void optInStoresEncryptedPasswordAndRestoresItForTheSameConnection() throws Exception {
         store.save(connection, true, PASSWORD);
         assertTrue(store.remembersPassword());

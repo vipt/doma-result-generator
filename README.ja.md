@@ -11,15 +11,17 @@ Daoの呼び出し元から、対応するSQLファイルへ直接移動する�
 ## 使い方
 
 1. EclipseのJavaプロジェクト内でSQLファイルを保存します。
-2. Package ExplorerまたはProject ExplorerでSQLファイルを右クリックし、**Generate Doma Result Class...**を選びます。
+2. Package Explorer・Project ExplorerのSQLファイル、または開いているSQLファイルのエディター上で右クリックし、**Generate Doma Result Class...**を選びます。
 3. JDBCドライバーのJAR、ドライバークラス、接続URL、ユーザー名・パスワードを入力します。依存JARがある場合は複数指定できます。
 4. 出力先のソースフォルダー、パッケージ、クラス名を指定します。名前から型を指定する場合は**Type mappings (optional)**で設定ファイルを選びます。プロジェクト直下に`name.properties`があれば初期選択されます。
 5. **Metadata SQL**で型確認用SQLを確認し、**Preview**を押します。
 6. **Proposed Java**で結果を確認します。新規クラスは**Generate**、既存クラスは差分を確認して**Update**を押します。
 
-`@Entity`、列の別名に対応する`@Column`、フィールド、getter/setterを生成します。既存クラスは差分確認後に更新できます。DAOやプロジェクト設定は変更しないため、生成したクラスをDAOの戻り値に指定してください。
+`@Entity`、列の別名に対応する`@Column`、privateフィールド、publicのgetter/setterを生成します。アノテーションとプロパティの型をimportし、`@Column`・`BigDecimal`・`LocalDateTime`などの短い型名で出力します。`java.lang`の型と、エンティティと同じパッケージの型はimport不要です。同名の型や手動コードと衝突する場合は、その参照だけ完全修飾名を使います。既存クラスは差分確認後に更新できます。DAOやプロジェクト設定は変更しないため、生成したクラスをDAOの戻り値に指定してください。
 
-Driver JARs・Driver class・JDBC URL・Usernameは、ダイアログを閉じるとプロジェクトごとにローカルのワークスペースへ保存します。**Cancel**で閉じた場合も保持し、次回起動時やEclipse再起動後に復元します。プロジェクト内のファイルには書き込みません。出力先・パッケージ・クラス名・編集したMetadata SQLは保持しません。
+Driver JARs・Driver class・JDBC URL・Username・Packageは、ダイアログを閉じるとプロジェクトごとにローカルのワークスペースへ保存します。**Cancel**で閉じた場合も保持し、次回起動時やEclipse再起動後に復元します。Packageは前回入力した文字列を初期値にします。初回は`com.example.dto`です。プロジェクト内のファイルには書き込みません。ソースフォルダー・クラス名・編集したMetadata SQLは保持しません。
+
+SQLエディターから起動した場合、Eclipseのテキストバッファーにある編集中のSQLを使用し、元のファイルは保存しません。未保存の編集を取得できないエディターでは、SQLの保存を求めます。Explorerから起動した場合は保存済みのSQLを使用します。
 
 パスワードは**Save password in Eclipse Secure Storage**で保存するかを選べます。初期状態ではオフです。オンの場合、Password欄を[EclipseのSecure Storage](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.isv/guide/secure_storage_architecture.htm)に暗号化して保存します。Eclipseからロック解除を求められる場合があります。チェックを外すかPassword欄を空にしてダイアログを閉じると、保存済みのパスワードを削除します。通常の設定ファイルにはパスワードを書き込みません。Driver class・JDBC URL・Usernameを変更すると、復元済みのパスワードをクリアします。認証情報はUsername・Password欄へ入力してください。Oracleの`user/password@...`や`password=...`、URLのユーザー情報など、認証情報を含むURLは保持しません。Secure Storageの読み込みや更新に失敗した場合は通知し、平文での代替保存は行いません。
 
@@ -112,8 +114,12 @@ doma-genと同じ形式で、生成するJavaのプロパティ名に正規表�
 たとえばSQLの列名・別名が`CREATED_DATETIME`なら、Java側の名前は`createdDatetime`になり、上のルールで型を指定できます。
 
 ```java
-@org.seasar.doma.Column(name = "CREATED_DATETIME")
-java.time.LocalDateTime createdDatetime;
+import java.time.LocalDateTime;
+import org.seasar.doma.Column;
+
+// エンティティクラス内
+@Column(name = "CREATED_DATETIME")
+private LocalDateTime createdDatetime;
 ```
 
 - 照合対象は、キャメルケースへの変換や重複回避の接尾辞付与が済んだ**Javaのプロパティ名**です。
