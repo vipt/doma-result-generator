@@ -89,4 +89,8 @@ public final class JavaNames {
         return new String(Character.toChars(Character.toUpperCase(first)))
                 + field.substring(Character.charCount(first));
     }
+
+    public static String resultClassName(String sqlFileName) {
+        return accessorSuffix(fieldName(sqlFileName.replaceFirst("(?i)\\.sql$", ""))) + "Result";
+    }
 }

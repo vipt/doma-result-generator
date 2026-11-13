@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 package io.github.domaresult.ui;
 
-import io.github.domaresult.core.EntityGenerator;
 import io.github.domaresult.core.GenerationException;
 import io.github.domaresult.core.JavaNames;
 import io.github.domaresult.core.JdbcDriverLoader;
@@ -12,7 +11,6 @@ import io.github.domaresult.core.SqlInput;
 import io.github.domaresult.core.SourceUpdatePlan;
 import io.github.domaresult.core.TypeNameMappings;
 import io.github.domaresult.eclipse.WorkspaceClassUpdater;
-import io.github.domaresult.merge.EntityMerger;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -64,6 +62,9 @@ final class GenerateDialog extends TitleAreaDialog {
     private Button savePassword;
     private boolean passwordReadFailed;
     private Combo sourceFolder;
+    private Combo sqlSyntax;
+    private static final SqlInput.Dialect[] SQL_DIALECTS = { null, SqlInput.Dialect.STANDARD, SqlInput.Dialect.POSTGRESQL,
+            SqlInput.Dialect.MYSQL, SqlInput.Dialect.MYSQL_NO_BACKSLASH, SqlInput.Dialect.POSTGRESQL_LEGACY, SqlInput.Dialect.SQLSERVER };
     private StyledText sql, preview;
     private TabFolder tabs;
     private String generated;
@@ -137,9 +138,14 @@ final class GenerateDialog extends TitleAreaDialog {
         roots.forEach(root -> sourceFolder.add(root.getPath().toPortableString()));
         sourceFolder.select(0);
         packageName = fullField(config, "Package", connectionSettings.loadPackageName(), false);
-        String base = JavaNames.fieldName(sqlFile.getName().replaceFirst("\\.sql$", ""));
-        className = fullField(config, "Class name", Character.toUpperCase(base.charAt(0)) + base.substring(1) + "Result", false);
+        className = fullField(config, "Class name", JavaNames.resultClassName(sqlFile.getName()), false);
         Composite sqlPage = page("Metadata SQL", 1);
+        new Label(sqlPage, SWT.NONE).setText("SQL syntax");
+        sqlSyntax = new Combo(sqlPage, SWT.READ_ONLY);
+        sqlSyntax.setItems(new String[] { "Automatic (JDBC URL)", "Generic / Oracle (non-nested comments)", "PostgreSQL", "MySQL / MariaDB",
+                "MySQL: NO_BACKSLASH_ESCAPES", "PostgreSQL: legacy backslash strings", "SQL Server" });
+        sqlSyntax.select(0);
+        sqlSyntax.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
         note(sqlPage, "Simple %expand directives are converted to * or alias.* on Preview. Bind test literals can remain. Replace conditions/loops with concrete SQL. The original file is unchanged.");
         sql = new StyledText(sqlPage, SWT.BORDER | SWT.MULTI | SWT.H_SCROLL | SWT.V_SCROLL);
         sql.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
@@ -151,6 +157,7 @@ final class GenerateDialog extends TitleAreaDialog {
         for (Text input : List.of(jars, driverClass, jdbcUrl, user, password, packageName, className, typeMappingsFile)) input.addModifyListener(invalidate);
         sql.addModifyListener(invalidate);
         sourceFolder.addModifyListener(invalidate);
+        sqlSyntax.addModifyListener(invalidate);
         ModifyListener clearPassword = e -> {
             passwordReadFailed = false;
             password.setText("");
@@ -219,7 +226,7 @@ final class GenerateDialog extends TitleAreaDialog {
     protected void buttonPressed(int id) {
         if (id == PREVIEW) loadPreview();
         else if (id == COMPARE) showChanges();
-        else if (id == ERROR_DETAILS && lastJdbcError != null) MessageDialog.openError(getShell(), "JDBC error details", lastJdbcError);
+        else if (id == ERROR_DETAILS && lastJdbcError != null) MessageDialog.openError(getShell(), "Error details", lastJdbcError);
         else super.buttonPressed(id);
     }
 
@@ -242,7 +249,10 @@ final class GenerateDialog extends TitleAreaDialog {
             if (driverClass.getText().isBlank() || jdbcUrl.getText().isBlank()) {
                 throw new IllegalArgumentException("Enter the JDBC driver class and JDBC URL.");
             }
-            String query = SqlInput.validate(sql.getText());
+            SqlInput.Dialect dialect = SQL_DIALECTS[sqlSyntax.getSelectionIndex()];
+            if (dialect == null) dialect = SqlInput.Dialect.fromJdbcUrl(jdbcUrl.getText());
+            final SqlInput.Dialect selectedDialect = dialect;
+            String query = SqlInput.validate(sql.getText(), selectedDialect);
             if (!query.equals(sql.getText())) sql.setText(query);
             List<Path> paths = Arrays.stream(jars.getText().split(";"))
                     .filter(path -> !path.isBlank()).map(String::trim).map(Path::of).toList();
@@ -269,8 +279,9 @@ final class GenerateDialog extends TitleAreaDialog {
                             thread.setContextClassLoader(loader);
                             stage.set(JdbcErrorDetails.Stage.CONNECTING);
                             try (var connection = loader.connect(driver, url, username, secret)) {
-                                String fresh = new EntityGenerator().generate(pkg, name,
-                                        new JdbcMetadataReader().read(connection, query, pkg + "." + name, mappings, stage::set));
+                                var columns = new JdbcMetadataReader().read(connection, query, pkg + "." + name, mappings, stage::set, selectedDialect);
+                                stage.set(JdbcErrorDetails.Stage.GENERATING_CLASS);
+                                String fresh = updater.generate(target, pkg, name, columns);
                                 result.set(fresh);
                                 stage.set(JdbcErrorDetails.Stage.CLOSING_CONNECTION);
                             }
@@ -278,8 +289,7 @@ final class GenerateDialog extends TitleAreaDialog {
                         stage.set(JdbcErrorDetails.Stage.CLOSING_DRIVER);
                     }
                     if (existing) {
-                        EntityMerger.Result merged = new EntityMerger().merge(before, result.get(), target.getJavaProject().getOptions(true));
-                        if (!before.equals(merged.source())) updater.validate(target, merged.source(), monitor);
+                        var merged = updater.preview(target, before, result.get(), monitor, stage::set);
                         result.set(merged.source());
                         notes.set(merged.notes());
                     }

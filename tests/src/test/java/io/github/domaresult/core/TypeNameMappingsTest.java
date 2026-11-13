@@ -37,6 +37,24 @@ class TypeNameMappingsTest {
         assertEquals("java.lang.String", rules.resolve("example.Result", "createdDatetime").orElseThrow());
     }
 
+    @Test void replacementUsesTheEntireMatchForReluctantQuantifiersAndAlternations() {
+        assertEquals("java.lang.Boolean", TypeNameMappings.parse(".*?Flag=java.lang.Boolean")
+                .resolve("example.Result", "isFlagFlag").orElseThrow());
+        assertEquals("java.lang.Long", TypeNameMappings.parse("id|.*Id=java.lang.Long")
+                .resolve("example.Result", "idId").orElseThrow());
+        assertEquals("java.lang.Long", TypeNameMappings.parse(".*?(?<kind>Long)=java.lang.${kind}")
+                .resolve("example.Result", "someLongLong").orElseThrow());
+    }
+
+    @Test void regexCanContainEqualsIncludingLookaroundsAndEscapedLiterals() {
+        assertEquals("java.lang.Long", TypeNameMappings.parse("(?=.*Id$)user.*=java.lang.Long")
+                .resolve("example.Result", "userId").orElseThrow());
+        assertEquals("java.lang.Long", TypeNameMappings.parse("user\\=Id=java.lang.Long")
+                .resolve("example.Result", "user=Id").orElseThrow());
+        assertEquals("java.lang.Long", TypeNameMappings.parse("example.Result@(?=.*Id$)user.*=java.lang.Long")
+                .resolve("example.Result", "userId").orElseThrow());
+    }
+
     @Test void classScopedRuleQuotesTheClassPrefixLiterally() {
         var rules = TypeNameMappings.parse("com.example.Result@.*Datetime$=java.time.LocalDateTime\n");
         assertEquals("java.time.LocalDateTime", rules.resolve("com.example.Result", "createdDatetime").orElseThrow());

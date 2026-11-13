@@ -23,7 +23,12 @@ public final class JdbcMetadataReader {
 
     public List<ResultColumn> read(Connection connection, String sql, String qualifiedClassName,
             TypeNameMappings mappings, Consumer<JdbcErrorDetails.Stage> progress) throws SQLException {
-        String prepared = SqlInput.validate(sql);
+        return read(connection, sql, qualifiedClassName, mappings, progress, SqlInput.Dialect.STANDARD);
+    }
+
+    public List<ResultColumn> read(Connection connection, String sql, String qualifiedClassName,
+            TypeNameMappings mappings, Consumer<JdbcErrorDetails.Stage> progress, SqlInput.Dialect dialect) throws SQLException {
+        String prepared = SqlInput.validate(sql, dialect);
         progress.accept(JdbcErrorDetails.Stage.PREPARING_SQL);
         try (PreparedStatement statement = connection.prepareStatement(prepared)) {
             progress.accept(JdbcErrorDetails.Stage.READING_COLUMNS);

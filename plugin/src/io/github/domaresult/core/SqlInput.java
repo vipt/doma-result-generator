@@ -10,6 +10,23 @@ import java.util.regex.Pattern;
 
 /** Prepares metadata SELECTs, including literal expansion directives, without evaluating expressions. */
 public final class SqlInput {
+    public enum Dialect {
+        STANDARD(false, false, false), POSTGRESQL(true, false, true), MYSQL(false, true, false),
+        MYSQL_NO_BACKSLASH(false, false, false), POSTGRESQL_LEGACY(true, true, true), SQLSERVER(true, false, false);
+        final boolean nestedComments, backslashStrings, postgresEscapes;
+        Dialect(boolean nestedComments, boolean backslashStrings, boolean postgresEscapes) {
+            this.nestedComments = nestedComments;
+            this.backslashStrings = backslashStrings;
+            this.postgresEscapes = postgresEscapes;
+        }
+        public static Dialect fromJdbcUrl(String url) {
+            String value = url == null ? "" : url.strip().toLowerCase(Locale.ROOT);
+            if (value.startsWith("jdbc:postgresql:")) return POSTGRESQL;
+            if (value.startsWith("jdbc:mysql:") || value.startsWith("jdbc:mariadb:")) return MYSQL;
+            if (value.startsWith("jdbc:sqlserver:") || value.startsWith("jdbc:jtds:sqlserver:")) return SQLSERVER;
+            return STANDARD;
+        }
+    }
     private static final Set<String> WRITES = Set.of("INSERT", "UPDATE", "DELETE", "MERGE", "CREATE",
             "ALTER", "DROP", "TRUNCATE", "CALL", "EXEC", "EXECUTE", "INTO", "GRANT", "REVOKE");
     private static final Pattern DOLLAR = Pattern.compile("\\$(?:[a-zA-Z_][a-zA-Z_0-9]*)?\\$");
@@ -21,6 +38,10 @@ public final class SqlInput {
     private SqlInput() {}
 
     public static String validate(String sql) {
+        return validate(sql, Dialect.STANDARD);
+    }
+
+    public static String validate(String sql, Dialect dialect) {
         if (sql == null || sql.isBlank()) throw new GenerationException("Enter a SELECT statement.");
         List<String> words = new ArrayList<>();
         List<Replacement> replacements = new ArrayList<>();
@@ -38,7 +59,7 @@ public final class SqlInput {
                 int depth = 1;
                 i += 2;
                 while (i < sql.length() && depth > 0) {
-                    if (sql.startsWith("/*", i)) { depth++; i += 2; }
+                    if (dialect.nestedComments && sql.startsWith("/*", i)) { depth++; i += 2; }
                     else if (sql.startsWith("*/", i)) { depth--; i += 2; }
                     else i++;
                 }
@@ -65,8 +86,13 @@ public final class SqlInput {
             if (c == '?') throw new GenerationException("Replace JDBC parameters (?) with typed test literals.");
             if (c == '\'' || c == '"' || c == '`' || c == '[') {
                 char close = c == '[' ? ']' : c;
+                boolean escape = c == '\'' && (dialect.backslashStrings || dialect.postgresEscapes && i > 0
+                        && (sql.charAt(i - 1) == 'e' || sql.charAt(i - 1) == 'E')
+                        && (i < 2 || !Character.isJavaIdentifierPart(sql.charAt(i - 2))))
+                        || c == '"' && dialect == Dialect.MYSQL;
                 boolean closed = false;
                 for (i++; i < sql.length(); i++) {
+                    if (escape && sql.charAt(i) == '\\' && i + 1 < sql.length()) { i++; continue; }
                     if (sql.charAt(i) == close) {
                         if (i + 1 < sql.length() && sql.charAt(i + 1) == close) { i++; continue; }
                         i++; closed = true; break;
@@ -89,7 +115,9 @@ public final class SqlInput {
                 while (i < sql.length() && (Character.isLetterOrDigit(sql.charAt(i))
                         || sql.charAt(i) == '_' || sql.charAt(i) == '$')) i++;
                 String word = sql.substring(begin, i).toUpperCase(Locale.ROOT);
-                if (WRITES.contains(word)) throw new GenerationException("Use a SELECT without data modification: " + word);
+                boolean locking = word.equals("UPDATE") && !words.isEmpty() && (words.get(words.size() - 1).equals("FOR")
+                        || words.size() >= 3 && words.subList(words.size() - 3, words.size()).equals(List.of("FOR", "NO", "KEY")));
+                if (WRITES.contains(word) && !locking) throw new GenerationException("Use a SELECT without data modification: " + word);
                 words.add(word);
             } else i++;
         }

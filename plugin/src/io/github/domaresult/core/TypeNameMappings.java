@@ -34,7 +34,8 @@ public final class TypeNameMappings {
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i).trim();
             if (line.isEmpty() || line.startsWith("#") || line.startsWith("!")) continue;
-            int separator = line.indexOf('=');
+            // A Java type/replacement cannot contain '='; regex lookarounds can.
+            int separator = line.lastIndexOf('=');
             if (separator <= 0 || separator == line.length() - 1) {
                 throw error(i + 1, "Expected property-name-regex=fully.qualified.JavaType.");
             }
@@ -65,7 +66,9 @@ public final class TypeNameMappings {
             if (!matcher.matches()) continue;
             String type;
             try {
-                type = matcher.replaceFirst(rule.replacement);
+                StringBuilder replacement = new StringBuilder();
+                matcher.appendReplacement(replacement, rule.replacement);
+                type = replacement.toString();
             } catch (IllegalArgumentException | IndexOutOfBoundsException e) {
                 throw error(rule.line, "Invalid capture-group replacement for property " + propertyName + ".");
             }

@@ -25,6 +25,8 @@ Driver JAR paths, driver class, JDBC URL, username and Package are remembered pe
 
 From a SQL editor, the generator reads the current Eclipse text buffer, including unsaved edits, without saving the file. An editor whose unsaved content cannot be read asks you to save first. From Explorer, it reads the saved SQL file.
 
+SQL extensions are case-insensitive in both the menu and default class name: `selectAll.SQL` defaults to `SelectAllResult`.
+
 **Save password in Eclipse Secure Storage** is off by default. Select it to save the Password field using [Eclipse encrypted secure preferences](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.isv/guide/secure_storage_architecture.htm); Eclipse may ask to unlock its storage. Clear it, or empty the Password field, and close the dialog to remove the saved password. Passwords are never saved in ordinary workspace preferences. Changing the driver class, URL or username clears the restored password. Use the separate Username and Password fields: URLs with embedded credentials, such as Oracle `user/password@...`, query `password=...`, or URL user info, are not remembered. If Secure Storage cannot be read or updated, the dialog reports it without falling back to plaintext.
 
 Raw driver exceptions are not logged or displayed, since they may include connection details. Driver errors show the operation stage, SQLState, vendor error code and Oracle ORA number when available. **Error details...** shows these codes and phase-specific guidance; generator errors give actionable explanations. Use your normal trusted driver and database connection settings. Driver-specific timeout and SSL settings can be supplied in the JDBC URL according to the driver's documentation.
@@ -95,6 +97,9 @@ Generated fields and accessors carry the Javadoc ownership tag `@domaGenerated`.
 - Javadoc, line comments and block comments are kept. When an obsolete generated declaration can be removed, its user comments remain as standalone comments. Only generator ownership tags are removed with the obsolete declaration.
 - A marked obsolete field and its simple marked accessors can be removed. If retained code refers to that field, an accessor has a custom body, or the field has custom initializers/annotations, the update is stopped with an explanation.
 - A handwritten member collision or an incompatible customized accessor stops the update. A private JDT working copy also checks the proposed class using the target project's Java build path. Java errors, including type errors in handwritten code, must be resolved before applying the update. The private validation does not save the class.
+- Wildcard-imported types are resolved against the target Java project. Ambiguous names require an explicit import or qualified type instead of guessing. Ordinary imports previously referenced by generated members are removed only when no code or Javadoc uses their short names. Other manual imports, static imports and wildcard imports are retained.
+
+Existing UTF-8 files with a BOM can be updated; the BOM is preserved when writing.
 
 Save existing edits before previewing. At Update, the saved source and modification stamp must still match the preview; dirty editors, changed files and deleted files stop the update. The file is written in its existing character encoding, with Eclipse local-history preservation enabled. Local-history retention follows workspace settings. The comparison covers the target Java file; callers in other files may still need changes when its public API changes.
 
@@ -139,9 +144,15 @@ On **Preview**, **Metadata SQL** displays the prepared SELECT. The saved SQL fil
 
 This version does not evaluate `/*%if*/`, `/*%for*/`, embedded variables (`/*# ... */`) or literal variables (`/*^ ... */`). Replace those with a concrete SELECT in **Metadata SQL**. If a condition changes the projected columns, select the intended projection explicitly.
 
+**Metadata SQL → SQL syntax** defaults to automatic selection from the JDBC URL: PostgreSQL, MySQL/MariaDB, SQL Server, or generic non-nested comments for Oracle and other URLs. PostgreSQL/SQL Server support nested comments; MySQL supports backslash string escapes. Select the corresponding override for MySQL `NO_BACKSLASH_ESCAPES` or PostgreSQL legacy backslash strings. Automatic selection does not query the database's session mode.
+
+Locking SELECTs with `FOR UPDATE`, `NOWAIT`, `OF ...` or `SKIP LOCKED` are accepted. The statement is only prepared/described, never executed; multiple statements and data-modifying CTEs remain rejected.
+
 ### JDBC errors
 
 SQLState alone may not identify an Oracle error. Use **Error details...** to check the ORA number, vendor code and whether the failure occurred while connecting, preparing the SELECT, or reading column metadata. If the same SQL works in another client, compare that client's JDBC driver and session/current-schema settings. Share only the diagnostic codes and stage when reporting a failure; connection strings, SQL text and raw driver messages are not included in these details.
+
+Existing-class merge and Java-validation failures identify their own operation stages rather than being reported as JDBC driver unloading errors.
 
 SELECTs, joins, aggregates and `WITH ... SELECT` are accepted. Multiple statements, data modifying CTEs and `SELECT ... INTO` are rejected. Validation is intentionally conservative; quote identifiers that match reserved data modification words. It is input validation, not a SQL security sandbox.
 
@@ -191,7 +202,7 @@ private LocalDateTime createdDatetime;
 - The **first matching rule from top to bottom** wins, and takes precedence over JDBC mapping. Unmatched properties keep their JDBC types. An explicit rule can supply a type even when the JDBC type is otherwise unsupported.
 - Scope a rule to a class with `com.example.dto.EmployeeResult@.*Datetime$=java.time.LocalDateTime`. The class-name prefix is literal; the property part is a regex. Place a scoped rule before broader rules that could also match.
 - Regex capture replacements such as `$1` and the leading-`@` property-pattern convention from Doma-Gen are supported. For example, `@.*(Date)time$=java.time.Local$1Time`.
-- Blank lines and lines starting with `#` or `!` are ignored. Surrounding whitespace is trimmed. The first `=` separates pattern and replacement. Backslashes in regexes are preserved; Java `Properties` unescaping and multiline continuations are not used.
+- Blank lines and lines starting with `#` or `!` are ignored. Surrounding whitespace is trimmed. The last `=` separates pattern and replacement, allowing regexes such as `(?=.*Id$)user.*=java.lang.Long`. Backslashes in regexes are preserved; Java `Properties` unescaping and multiline continuations are not used. Replacements use the established whole-name match, including with reluctant quantifiers and alternations, without appending an unmatched suffix to the Java type.
 - Values may be fully qualified Java class names (including Doma domains), primitives, or `byte[]`. Generic type expressions and other array expressions are not supported. Malformed rules and invalid expanded type names report a line number.
 
 For example, `employeeId=com.example.domain.EmployeeId` can refer to a Doma `@Domain` class in the target project. The generator checks type-name syntax; class existence, Doma property compatibility and JDBC value conversion must be valid in that project. A name rule specifies the property type and does not add a new database value converter. Prefer wrapper types when NULL is possible.

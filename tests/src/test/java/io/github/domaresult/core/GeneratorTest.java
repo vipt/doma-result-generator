@@ -149,6 +149,18 @@ class GeneratorTest {
         compile(List.of(file), true);
     }
 
+    @ParameterizedTest @ValueSource(strings = { "selectAll.sql", "selectAll.SQL", "selectAll.Sql", "selectAll.sQL" })
+    void defaultClassNameIgnoresSqlExtensionCase(String file) {
+        assertEquals("SelectAllResult", JavaNames.resultClassName(file));
+    }
+
+    @Test void generatedJavaLangTypesDoNotBindToSamePackageTypes() {
+        String source = new EntityGenerator().generate("example", "Result", List.of(new ResultColumn("NAME", "java.lang.String")),
+                name -> name.equals("example.String"));
+        assertTrue(source.contains("private java.lang.String name;"));
+        assertTrue(source.contains("public java.lang.String getName()"));
+    }
+
     @Test void nameRulesGenerateCompilableDateTimeAndDomainPropertiesAndMapActualRows() throws Exception {
         try (Connection connection = database()) {
             var rules = TypeNameMappings.parse(".*Datetime$=java.time.LocalDateTime\nsalaryValue=example.Salary\n");
@@ -266,7 +278,7 @@ class GeneratorTest {
     @ValueSource(strings = { "select 1", "-- comment\nselect 'delete;?' as name; -- end",
             "select /* employeeId */1", "with example as (select 1 as id) select id from example",
             "select $$delete;?$$ as body", "select $tag$/*%if*/$tag$ as body",
-            "select [delete], `update`, \"drop\" from example", "/* outer /* inner */ end */ select 1" })
+            "select [delete], `update`, \"drop\" from example" })
     void acceptsConcreteSelects(String sql) { assertNotNull(SqlInput.validate(sql)); }
 
     @ParameterizedTest

@@ -83,6 +83,12 @@ public class GenerateHandlerTest {
         assertEquals(EvaluationResult.FALSE, evaluate(expression, new TextSelection(0, 0), view, sql));
         assertEquals(EvaluationResult.FALSE, evaluate(expression, new StructuredSelection(java), view, sql));
         assertEquals(EvaluationResult.FALSE, evaluate(expression, new StructuredSelection(new Object[] { sql, java }), view, sql));
+        for (String name : new String[] { "upper.SQL", "mixed.Sql", "other.sQL" }) {
+            IFile mixed = file(name, "select 1");
+            assertEquals(EvaluationResult.TRUE, evaluate(expression, new StructuredSelection(mixed), view, java));
+            assertEquals(EvaluationResult.TRUE, evaluate(expression, new TextSelection(0, 0), editor, mixed));
+            assertEquals(mixed, GenerateHandler.targetFile(new StructuredSelection(mixed), null));
+        }
     }
 
     private Expression menuExpression() throws Exception {

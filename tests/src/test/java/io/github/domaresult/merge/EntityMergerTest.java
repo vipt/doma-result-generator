@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaFileObject;
 import javax.tools.ToolProvider;
@@ -375,6 +376,84 @@ class EntityMergerTest {
         assertTrue(merged.contains("setId(BigDecimal id)"));
         assertTrue(merged.contains(manual));
         assertEquals(merged, merge(merged, proposed));
+        compile(merged);
+    }
+
+    @Test void multipleWildcardImportsResolveDomaAndUnchangedTypesWithoutTouchingCustomGetter() throws Exception {
+        String before = generated(column("SALARY", "java.math.BigDecimal"))
+                .replace("import org.seasar.doma.Column;\nimport org.seasar.doma.Entity;", "import org.seasar.doma.*;")
+                .replace("import java.math.BigDecimal;", "import java.math.*;\nimport java.time.*;")
+                .replace("return salary;", "return salary == null ? BigDecimal.ZERO : salary;");
+        String merged = merge(before, generated(column("SALARY", "java.math.BigDecimal")));
+        assertTrue(merged.contains("return salary == null ? BigDecimal.ZERO : salary;"));
+        assertTrue(merged.contains("private BigDecimal salary;"));
+        assertEquals(merged, merge(merged, generated(column("SALARY", "java.math.BigDecimal"))));
+        compile(merged);
+    }
+
+    @Test void ambiguousWildcardTypeIsRejectedInsteadOfGuessed() {
+        String before = generated(column("DAY", "java.sql.Date"))
+                .replace("import java.sql.Date;", "import java.sql.*;\nimport java.util.*;");
+        var error = assertThrows(GenerationException.class, () -> merge(before, generated(column("DAY", "java.sql.Date"))));
+        assertTrue(error.getMessage().contains("Ambiguous Java type 'Date'"));
+        assertTrue(error.getMessage().contains("explicit import"));
+    }
+
+    @Test void samePackageTypesShadowJavaLangWhenResolvingExistingSource() {
+        String before = generated(column("VALUE", "example.String"))
+                .replace("return value;", "return value == null ? new String() : value;") + "\nclass String {}\n";
+        assertThrows(GenerationException.class, () -> merge(before, generated(column("VALUE", "java.lang.String"))));
+        String external = before.substring(0, before.lastIndexOf("class String"));
+        var lookup = (java.util.function.Predicate<String>) name -> name.equals("example.String");
+        String desired = new EntityGenerator().generate("example", "Result", List.of(column("VALUE", "java.lang.String")), lookup);
+        assertThrows(GenerationException.class, () -> new EntityMerger().merge(external, desired, Map.of(), lookup));
+    }
+
+    @Test void nestedTypeInAnotherTopLevelClassDoesNotShadowAnEntityFieldType() throws Exception {
+        String before = generated(column("VALUE", "java.lang.String"))
+                .replace("return value;", "return value == null ? \"\" : value;")
+                + "\nclass Helper { static class String {} }\n";
+        String merged = merge(before, generated(column("VALUE", "java.lang.String")));
+        assertTrue(merged.contains("return value == null ? \"\" : value;"));
+        compile(merged);
+    }
+
+    @Test void bomAndCrLfAreKeptWhileUpdatingTheClass() throws Exception {
+        String before = "\uFEFF" + generated(column("ID", "java.lang.Integer")).replace("\n", "\r\n");
+        String merged = merge(before, generated(column("ID", "java.lang.Long")));
+        assertTrue(merged.startsWith("\uFEFFpackage example;"));
+        assertEquals(1, merged.chars().filter(c -> c == '\uFEFF').count());
+        assertTrue(merged.contains("private Long id;"));
+        assertFalse(merged.replace("\r\n", "").contains("\n"));
+        compile(merged.substring(1));
+    }
+
+    @Test void generatedImportsAreRemovedAfterTypeChangeOrColumnRemovalButCommentsStay() throws Exception {
+        String before = generated(column("AMOUNT", "java.math.BigDecimal"), column("ID", "java.lang.Integer"))
+                .replace("import java.math.BigDecimal;", "import java.math.BigDecimal; // keep import note\nimport java.util.Locale;");
+        String changed = merge(before, generated(column("AMOUNT", "java.lang.Long"), column("ID", "java.lang.Integer")));
+        assertFalse(changed.contains("import java.math.BigDecimal;"));
+        assertTrue(changed.contains("// keep import note"));
+        assertTrue(changed.contains("import java.util.Locale;"));
+        String removed = merge(before, generated(column("ID", "java.lang.Integer")));
+        assertFalse(removed.contains("import java.math.BigDecimal;"));
+        assertEquals(removed, merge(removed, generated(column("ID", "java.lang.Integer"))));
+        compile(changed);
+        compile(removed);
+    }
+
+    @Test void importsUsedByManualCodeAndJavadocAreRetained() throws Exception {
+        String before = custom(generated(column("AMOUNT", "java.math.BigDecimal")),
+                "\n    /** See {@link BigDecimal}. */\n    public void help() {}\n");
+        String merged = merge(before, generated(column("AMOUNT", "java.lang.Long")));
+        assertTrue(merged.contains("import java.math.BigDecimal;"));
+        assertTrue(merged.contains("/** See {@link BigDecimal}. */"));
+        compile(merged);
+        String helper = "\n    public BigDecimal constant() { return BigDecimal.ZERO; }\n";
+        before = custom(generated(column("AMOUNT", "java.math.BigDecimal")), helper);
+        merged = merge(before, generated(column("AMOUNT", "java.lang.Long")));
+        assertTrue(merged.contains("import java.math.BigDecimal;"));
+        assertTrue(merged.contains(helper));
         compile(merged);
     }
 

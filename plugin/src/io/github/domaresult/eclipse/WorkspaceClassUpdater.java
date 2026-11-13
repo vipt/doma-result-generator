@@ -3,11 +3,20 @@ package io.github.domaresult.eclipse;
 
 import io.github.domaresult.core.GenerationException;
 import io.github.domaresult.core.SourceUpdatePlan;
+import io.github.domaresult.core.JavaSource;
+import io.github.domaresult.core.JdbcErrorDetails;
+import io.github.domaresult.core.EntityGenerator;
+import io.github.domaresult.core.ResultColumn;
+import io.github.domaresult.merge.EntityMerger;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+import java.util.HashMap;
+import java.util.List;
 import org.eclipse.core.filebuffers.FileBuffers;
 import org.eclipse.core.filebuffers.LocationKind;
 import org.eclipse.core.resources.IFile;
@@ -18,6 +27,8 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.jdt.core.JavaModelException;
+import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.WorkingCopyOwner;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTParser;
@@ -26,6 +37,38 @@ import org.eclipse.jdt.core.dom.CompilationUnit;
 /** Snapshot, validate in a private working copy, then update the saved workspace file. */
 public final class WorkspaceClassUpdater {
     public record Snapshot(String source, long modificationStamp) {}
+
+    private static final class TypeLookupFailure extends RuntimeException {
+        TypeLookupFailure(JavaModelException cause) { super(cause); }
+    }
+
+    private Predicate<String> typeLookup(IJavaProject project) {
+        var cache = new HashMap<String, Boolean>();
+        return name -> cache.computeIfAbsent(name, key -> {
+            try { return project.findType(key) != null; }
+            catch (JavaModelException e) { throw new TypeLookupFailure(e); }
+        });
+    }
+
+    public String generate(ICompilationUnit target, String pkg, String name, List<ResultColumn> columns) throws CoreException {
+        try { return new EntityGenerator().generate(pkg, name, columns, typeLookup(target.getJavaProject())); }
+        catch (TypeLookupFailure e) { throw (JavaModelException) e.getCause(); }
+    }
+
+    public EntityMerger.Result preview(ICompilationUnit target, String before, String generated,
+            IProgressMonitor monitor, Consumer<JdbcErrorDetails.Stage> progress) throws CoreException {
+        progress.accept(JdbcErrorDetails.Stage.MERGING_CLASS);
+        var project = target.getJavaProject();
+        EntityMerger.Result merged;
+        try {
+            merged = new EntityMerger().merge(before, generated, project.getOptions(true), typeLookup(project));
+        } catch (TypeLookupFailure e) { throw (JavaModelException) e.getCause(); }
+        if (!before.equals(merged.source())) {
+            progress.accept(JdbcErrorDetails.Stage.VALIDATING_CLASS);
+            validate(target, merged.source(), monitor);
+        }
+        return merged;
+    }
 
     public Snapshot snapshot(ICompilationUnit unit) throws CoreException {
         if (!unit.exists() || !(unit.getResource() instanceof IFile file)) {
@@ -52,7 +95,7 @@ public final class WorkspaceClassUpdater {
         WorkingCopyOwner owner = new WorkingCopyOwner() {};
         ICompilationUnit copy = target.getWorkingCopy(owner, monitor);
         try {
-            copy.getBuffer().setContents(source);
+            copy.getBuffer().setContents(JavaSource.forParser(source));
             ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
             parser.setSource(copy);
             parser.setWorkingCopyOwner(owner);

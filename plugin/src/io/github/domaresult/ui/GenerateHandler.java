@@ -59,7 +59,7 @@ public final class GenerateHandler extends AbstractHandler {
         if (editorInput != null) file = editorInput instanceof IFileEditorInput input ? input.getFile() : Adapters.adapt(editorInput, IFile.class);
         else if (selection instanceof IStructuredSelection structured && structured.size() == 1) file = Adapters.adapt(structured.getFirstElement(), IFile.class);
         else return null;
-        return file != null && "sql".equalsIgnoreCase(file.getFileExtension()) ? file : null;
+        return SqlFilePropertyTester.isSqlFile(file) ? file : null;
     }
 
     static String readSql(IFile file, boolean fromEditor) throws Exception {

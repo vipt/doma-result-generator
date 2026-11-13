@@ -6,6 +6,7 @@ import io.github.domaresult.core.EntityGenerator;
 import io.github.domaresult.core.GenerationException;
 import io.github.domaresult.core.ResultColumn;
 import io.github.domaresult.core.SourceUpdatePlan;
+import io.github.domaresult.core.JdbcErrorDetails;
 import io.github.domaresult.merge.EntityMerger;
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -13,6 +14,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
+import java.util.ArrayList;
+import java.lang.reflect.Proxy;
 import org.eclipse.core.filebuffers.FileBuffers;
 import org.eclipse.core.filebuffers.LocationKind;
 import org.eclipse.core.resources.IFile;
@@ -22,6 +25,8 @@ import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.JavaCore;
+import org.eclipse.jdt.core.JavaModelException;
+import org.eclipse.jdt.core.IJavaModelStatusConstants;
 import org.eclipse.jdt.launching.IVMInstall;
 import org.eclipse.jdt.launching.JavaRuntime;
 import org.junit.*;
@@ -142,6 +147,55 @@ public class WorkspaceClassUpdaterTest {
         file().delete(true, null);
         assertThrows(GenerationException.class, () -> updater.apply(target, plan));
         assertFalse(file().exists());
+    }
+
+    @Test public void utf8BomIsPreservedThroughPreviewValidationAndWrite() throws Exception {
+        write("\uFEFF" + generated("java.lang.Integer"));
+        var saved = updater.snapshot(target);
+        assertTrue(saved.source().startsWith("\uFEFF"));
+        var stages = new ArrayList<JdbcErrorDetails.Stage>();
+        var proposed = updater.preview(target, saved.source(), generated("java.lang.Long"), null, stages::add);
+        assertEquals(List.of(JdbcErrorDetails.Stage.MERGING_CLASS, JdbcErrorDetails.Stage.VALIDATING_CLASS), stages);
+        updater.apply(target, new SourceUpdatePlan(saved.source(), proposed.source(), saved.modificationStamp()));
+        try (var stream = file().getContents()) {
+            byte[] bytes = stream.readAllBytes();
+            assertArrayEquals(new byte[] { (byte) 0xef, (byte) 0xbb, (byte) 0xbf }, java.util.Arrays.copyOf(bytes, 3));
+            String after = new String(bytes, StandardCharsets.UTF_8);
+            assertTrue(after.contains("private Long id;"));
+            assertEquals(1, after.chars().filter(c -> c == '\uFEFF').count());
+        }
+    }
+
+    @Test public void projectLookupResolvesWildcardDomainTypesAndJavaLangShadowing() throws Exception {
+        unit("domain", "Amount.java", "package domain; public class Amount {}");
+        String before = new EntityGenerator().generate("example", "Result", List.of(new ResultColumn("AMOUNT", "domain.Amount")))
+                .replace("import domain.Amount;", "import domain.*;\nimport java.time.*;")
+                .replace("return amount;", "return amount == null ? new Amount() : amount;");
+        write(before);
+        var result = updater.preview(target, before, new EntityGenerator().generate("example", "Result", List.of(new ResultColumn("AMOUNT", "domain.Amount"))), null, stage -> {});
+        assertTrue(result.source().contains("return amount == null ? new Amount() : amount;"));
+        assertTrue(result.source().contains("private Amount amount;"));
+        unit("example", "String.java", "package example; public class String {}");
+        String generated = updater.generate(target, "example", "Result", List.of(new ResultColumn("NAME", "java.lang.String")));
+        assertTrue(generated.contains("private java.lang.String name;"));
+        updater.validate(target, generated, null);
+    }
+
+    @Test public void validationJavaModelFailureHasItsOwnStageAndGuidance() throws Exception {
+        var failure = new JavaModelException(new Exception("private details"), IJavaModelStatusConstants.ELEMENT_DOES_NOT_EXIST);
+        ICompilationUnit broken = (ICompilationUnit) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[] { ICompilationUnit.class },
+                (proxy, method, args) -> {
+                    if (method.getName().equals("getJavaProject")) return javaProject;
+                    if (method.getName().equals("getWorkingCopy")) throw failure;
+                    throw new UnsupportedOperationException(method.getName());
+                });
+        var stages = new ArrayList<JdbcErrorDetails.Stage>();
+        assertSame(failure, assertThrows(JavaModelException.class, () -> updater.preview(broken, generated("java.lang.Integer"), generated("java.lang.Long"), null, stages::add)));
+        assertEquals(JdbcErrorDetails.Stage.VALIDATING_CLASS, stages.get(stages.size() - 1));
+        var info = JdbcErrorDetails.describe(failure, stages.get(stages.size() - 1), false);
+        assertTrue(info.summary().contains("validating the proposed result class"));
+        assertFalse(info.details().contains("driver JAR"));
+        assertFalse(info.details().contains("private details"));
     }
 
     private String generated(String type) {

@@ -3,6 +3,7 @@ package io.github.domaresult.merge;
 
 import io.github.domaresult.core.GenerationException;
 import io.github.domaresult.core.JavaImports;
+import io.github.domaresult.core.JavaSource;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -11,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.dom.*;
 
@@ -28,9 +30,13 @@ public final class EntityMerger {
     }
 
     public Result merge(String current, String generated, Map<String, String> compilerOptions) {
-        Model desiredInput = new Model(generated, null, compilerOptions);
-        Model desired = new Model(qualifyGenerated(desiredInput), null, compilerOptions);
-        Model existing = new Model(current, desired.type.getName().getIdentifier(), compilerOptions);
+        return merge(current, generated, compilerOptions, EntityMerger::runtimeType);
+    }
+
+    public Result merge(String current, String generated, Map<String, String> compilerOptions, Predicate<String> typeLookup) {
+        Model desiredInput = new Model(generated, null, compilerOptions, typeLookup);
+        Model desired = new Model(qualifyGenerated(desiredInput), null, compilerOptions, typeLookup);
+        Model existing = new Model(current, desired.type.getName().getIdentifier(), compilerOptions, typeLookup);
         if (!existing.packageName().equals(desired.packageName())) throw conflict("The existing package does not match the target package.");
         Annotation entity = existing.annotation(existing.type, "org.seasar.doma.Entity");
         if (entity == null) throw conflict("The existing class must be a Doma @Entity.");
@@ -43,6 +49,8 @@ public final class EntityMerger {
             }
         }
         List<Patch> edits = new ArrayList<>();
+        Set<String> ownedImports = new HashSet<>();
+        for (ASTNode node : generatedReferences(existing)) ownedImports.add(referenceType(existing, node).replace("[]", ""));
         List<String> additions = new ArrayList<>();
         List<String> notes = new ArrayList<>();
         boolean alreadyManaged = existing.fields.values().stream().anyMatch(field -> managed(field.node))
@@ -137,9 +145,45 @@ public final class EntityMerger {
             edits.add(new Patch(close, 0, block.toString()));
         }
         String merged = apply(current, edits);
-        merged = shortenGenerated(new Model(merged, desired.type.getName().getIdentifier(), compilerOptions));
-        new Model(merged, desired.type.getName().getIdentifier(), compilerOptions);
+        merged = shortenGenerated(new Model(merged, desired.type.getName().getIdentifier(), compilerOptions, typeLookup));
+        merged = removeUnusedGeneratedImports(new Model(merged, desired.type.getName().getIdentifier(), compilerOptions, typeLookup), ownedImports);
+        new Model(merged, desired.type.getName().getIdentifier(), compilerOptions, typeLookup);
         return new Result(merged, notes);
+    }
+
+    private static boolean runtimeType(String name) {
+        String binary = name;
+        while (true) {
+            try { Class.forName(binary, false, EntityMerger.class.getClassLoader()); return true; }
+            catch (ClassNotFoundException e) {
+                int dot = binary.lastIndexOf('.');
+                if (dot < 0) return false;
+                binary = binary.substring(0, dot) + "$" + binary.substring(dot + 1);
+            } catch (LinkageError e) { return false; }
+        }
+    }
+
+    private static String removeUnusedGeneratedImports(Model model, Set<String> candidates) {
+        Set<String> used = new HashSet<>();
+        model.unit.accept(new ASTVisitor(true) {
+            @Override public boolean preVisit2(ASTNode node) {
+                return !(node instanceof ImportDeclaration) && !(node instanceof PackageDeclaration);
+            }
+            @Override public boolean visit(SimpleName name) {
+                if (name.isDeclaration()) return true;
+                if (name.getParent() instanceof QualifiedName qualified && qualified.getName() == name) return true;
+                used.add(name.getIdentifier());
+                return true;
+            }
+        });
+        List<Patch> edits = new ArrayList<>();
+        for (Object item : model.unit.imports()) {
+            ImportDeclaration declaration = (ImportDeclaration) item;
+            String name = declaration.getName().getFullyQualifiedName();
+            if (!declaration.isStatic() && !declaration.isOnDemand() && candidates.contains(name)
+                    && !used.contains(name.substring(name.lastIndexOf('.') + 1))) model.removeKeepingComments(edits, declaration);
+        }
+        return apply(model.source, edits);
     }
 
     private static List<ASTNode> generatedReferences(Model model) {
@@ -185,7 +229,7 @@ public final class EntityMerger {
         }
         List<ASTNode> references = generatedReferences(model);
         Set<ASTNode> ownedReferences = new HashSet<>(references);
-        model.unit.accept(new ASTVisitor() {
+        model.unit.accept(new ASTVisitor(true) {
             @Override public boolean preVisit2(ASTNode node) {
                 if (ownedReferences.contains(node)) return false;
                 preVisit(node);
@@ -193,18 +237,27 @@ public final class EntityMerger {
             }
             private void reserve(String name) {
                 if (model.imports.containsKey(name)) imports.reserve(name, model.imports.get(name));
-                else if (model.resolve(name).startsWith("java.lang.")) imports.reserve(name, model.resolve(name));
-                else imports.block(name);
+                else if (!model.declaredTypes.containsKey(name) && model.exists("java.lang." + name)) imports.reserve(name, "java.lang." + name);
+                else reserveType(name);
+            }
+            private void reserveType(String name) {
+                try {
+                    String qualified = model.resolve(name);
+                    if (model.exists(qualified)) imports.reserve(name, qualified);
+                    else imports.block(name);
+                } catch (GenerationException unresolved) { imports.block(name); }
             }
             @Override public void preVisit(ASTNode node) {
                 if (node instanceof AbstractTypeDeclaration declaration) imports.block(declaration.getName().getIdentifier());
                 else if (node instanceof TypeParameter parameter) imports.block(parameter.getName().getIdentifier());
-                else if (node instanceof SimpleType type && type.getName().isSimpleName()) reserve(type.getName().getFullyQualifiedName());
+                else if (node instanceof SimpleType type && type.getName().isSimpleName()) reserveType(type.getName().getFullyQualifiedName());
                 else if (node instanceof Annotation annotation && annotation.getTypeName().isSimpleName()
-                        && !ownedReferences.contains(annotation.getTypeName())) reserve(annotation.getTypeName().getFullyQualifiedName());
+                        && !ownedReferences.contains(annotation.getTypeName())) reserveType(annotation.getTypeName().getFullyQualifiedName());
                 else if (node instanceof MethodInvocation call && call.getExpression() instanceof SimpleName name) reserve(name.getIdentifier());
                 else if (node instanceof QualifiedName name && name.getQualifier() instanceof SimpleName qualifier
                         && Character.isUpperCase(qualifier.getIdentifier().codePointAt(0))) reserve(qualifier.getIdentifier());
+                else if (node instanceof SimpleName name && (name.getParent() instanceof TagElement
+                        || name.getParent() instanceof MethodRef || name.getParent() instanceof MemberRef)) reserveType(name.getIdentifier());
             }
         });
         List<Patch> edits = new ArrayList<>();
@@ -329,9 +382,15 @@ public final class EntityMerger {
         final Map<String, Field> fields = new LinkedHashMap<>();
         final Map<String, String> imports = new HashMap<>();
         final List<String> wildcardImports = new ArrayList<>();
+        final Map<String, String> declaredTypes = new HashMap<>(), staticImports = new HashMap<>();
+        final Map<String, Boolean> knownTypes = new HashMap<>();
+        final Set<String> ambiguousDeclarations = new HashSet<>();
+        final Set<String> sourceTypes = new HashSet<>();
+        final Predicate<String> typeLookup;
 
-        Model(String source, String className, Map<String, String> compilerOptions) {
+        Model(String source, String className, Map<String, String> compilerOptions, Predicate<String> typeLookup) {
             this.source = source;
+            this.typeLookup = typeLookup;
             this.newline = source.contains("\r\n") ? "\r\n" : "\n";
             ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
             Map<String, String> options = new HashMap<>();
@@ -339,7 +398,7 @@ public final class EntityMerger {
             options.putAll(compilerOptions);
             options.put(JavaCore.COMPILER_DOC_COMMENT_SUPPORT, JavaCore.ENABLED);
             parser.setCompilerOptions(options);
-            parser.setSource(source.toCharArray());
+            parser.setSource(JavaSource.forParser(source).toCharArray());
             parser.setResolveBindings(false);
             this.unit = (CompilationUnit) parser.createAST(null);
             for (var problem : unit.getProblems()) {
@@ -355,11 +414,26 @@ public final class EntityMerger {
             }
             if (match == null) throw conflict("The existing file must contain the target top-level mutable class.");
             this.type = match;
+            unit.accept(new ASTVisitor() {
+                @Override public void preVisit(ASTNode node) {
+                    if (!(node instanceof AbstractTypeDeclaration declaration)) return;
+                    String qualified = declaration.getName().getIdentifier();
+                    for (ASTNode parent = declaration.getParent(); parent != null; parent = parent.getParent()) {
+                        if (parent instanceof MethodDeclaration || parent instanceof Initializer || parent instanceof LambdaExpression) return;
+                        if (parent instanceof AbstractTypeDeclaration enclosing) qualified = enclosing.getName().getIdentifier() + "." + qualified;
+                    }
+                    if (!packageName().isEmpty()) qualified = packageName() + "." + qualified;
+                    sourceTypes.add(qualified);
+                    if (!(declaration.getParent() instanceof CompilationUnit) && declaration.getParent() != type) return;
+                    String previous = declaredTypes.putIfAbsent(declaration.getName().getIdentifier(), qualified);
+                    if (previous != null && !previous.equals(qualified)) ambiguousDeclarations.add(declaration.getName().getIdentifier());
+                }
+            });
             for (Object item : unit.imports()) {
                 ImportDeclaration declaration = (ImportDeclaration) item;
-                if (declaration.isStatic()) continue;
                 String name = declaration.getName().getFullyQualifiedName();
                 if (declaration.isOnDemand()) wildcardImports.add(name);
+                else if (declaration.isStatic()) staticImports.put(name.substring(name.lastIndexOf('.') + 1), name);
                 else imports.put(name.substring(name.lastIndexOf('.') + 1), name);
             }
             for (FieldDeclaration field : type.getFields()) {
@@ -387,11 +461,22 @@ public final class EntityMerger {
         }
         String resolve(String name) {
             if (name.contains(".")) return name;
+            if (ambiguousDeclarations.contains(name)) throw conflict("Ambiguous local Java type '" + name + "'. Use qualified type names before updating.");
+            if (declaredTypes.containsKey(name)) return declaredTypes.get(name);
             if (imports.containsKey(name)) return imports.get(name);
-            try { Class.forName("java.lang." + name, false, null); return "java.lang." + name; }
-            catch (ClassNotFoundException ignored) {}
-            if (wildcardImports.size() == 1) return wildcardImports.get(0) + "." + name;
-            return packageName().isEmpty() ? name : packageName() + "." + name;
+            if (staticImports.containsKey(name) && exists(staticImports.get(name))) return staticImports.get(name);
+            String own = packageName().isEmpty() ? name : packageName() + "." + name;
+            if (exists(own)) return own;
+            Set<String> candidates = new HashSet<>();
+            if (exists("java.lang." + name)) candidates.add("java.lang." + name);
+            for (String owner : wildcardImports) if (exists(owner + "." + name)) candidates.add(owner + "." + name);
+            if (candidates.size() == 1) return candidates.iterator().next();
+            if (candidates.size() > 1) throw conflict("Ambiguous Java type '" + name + "'. Add an explicit import or qualified type before updating.");
+            if (!wildcardImports.isEmpty()) throw conflict("Cannot resolve Java type '" + name + "' from wildcard imports. Add an explicit import or check the project build path.");
+            return own;
+        }
+        boolean exists(String name) {
+            return sourceTypes.contains(name) || knownTypes.computeIfAbsent(name, typeLookup::test);
         }
         List<MethodDeclaration> methods(String name, int count) {
             return java.util.Arrays.stream(type.getMethods()).filter(method -> !method.isConstructor()

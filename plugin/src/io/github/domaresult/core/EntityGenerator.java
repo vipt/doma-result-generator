@@ -2,13 +2,24 @@
 package io.github.domaresult.core;
 
 import java.util.List;
+import java.util.function.Predicate;
 
 public final class EntityGenerator {
     public String generate(String packageName, String className, List<ResultColumn> columns) {
+        return generate(packageName, className, columns, name -> false);
+    }
+
+    public String generate(String packageName, String className, List<ResultColumn> columns, Predicate<String> typeLookup) {
         JavaNames.validateTarget(packageName, className);
         if (columns.isEmpty()) throw new GenerationException("The SELECT has no result columns.");
         List<String> fields = JavaNames.fieldNames(columns.stream().map(ResultColumn::label).toList());
         JavaImports imports = new JavaImports(packageName, className);
+        for (ResultColumn column : columns) {
+            String type = column.javaType();
+            if (type.startsWith("java.lang.") && typeLookup.test(packageName + "." + type.substring("java.lang.".length()))) {
+                imports.block(type.substring("java.lang.".length()));
+            }
+        }
         String entity = imports.use("org.seasar.doma.Entity");
         String columnAnnotation = imports.use("org.seasar.doma.Column");
         List<String> types = columns.stream().map(column -> imports.use(column.javaType())).toList();

@@ -19,7 +19,10 @@ public final class JdbcErrorDetails {
         READING_COLUMNS("reading SELECT column metadata", "Compare the JDBC driver and session settings with your SQL client; the driver failed while describing columns."),
         CLOSING_STATEMENT("closing the JDBC statement", "The driver failed while closing its statement."),
         CLOSING_CONNECTION("closing the JDBC connection", "The driver failed while closing its connection."),
-        CLOSING_DRIVER("unloading the JDBC driver", "Check driver JAR dependencies and Java compatibility.");
+        CLOSING_DRIVER("unloading the JDBC driver", "Check driver JAR dependencies and Java compatibility."),
+        GENERATING_CLASS("generating the result class", "Check the result types and project Java build path."),
+        MERGING_CLASS("merging the existing result class", "Check the saved class, imports and project Java build path."),
+        VALIDATING_CLASS("validating the proposed result class", "Check the existing Java file and project Java build path; refresh Preview before updating.");
 
         private final String label, hint;
         Stage(String label, String hint) { this.label = label; this.hint = hint; }
