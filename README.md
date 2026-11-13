@@ -19,7 +19,7 @@ It also opens a DAO's external SQL file directly from a Java method call.
 
 The plug-in uses `Connection.prepareStatement(...).getMetaData()`. It does not call `execute`, `executeQuery` or fetch result rows. Some drivers may communicate with the database while preparing/describing a statement. No automatic execution fallback is performed when metadata is unavailable.
 
-Connection settings are kept only in the dialog and are not persisted. Raw driver exceptions are not logged or displayed, since they may include connection details. SQLState and exception class are displayed for driver errors; generator errors give actionable explanations. Use your normal trusted driver and database connection settings. Driver-specific timeout and SSL settings can be supplied in the JDBC URL according to the driver's documentation.
+Connection settings are kept only in the dialog and are not persisted. Raw driver exceptions are not logged or displayed, since they may include connection details. Driver errors show the operation stage, SQLState, vendor error code and Oracle ORA number when available. **Error details...** shows these codes and phase-specific guidance; generator errors give actionable explanations. Use your normal trusted driver and database connection settings. Driver-specific timeout and SSL settings can be supplied in the JDBC URL according to the driver's documentation.
 
 ## Example
 
@@ -100,7 +100,25 @@ This feature searches workspace source folders on the DAO's Java build path. SQL
 
 Simple Doma bind comments with executable test literals, such as `/* employeeId */11`, can remain. JDBC parameter placeholders (`?`) must be replaced with typed sample literals.
 
-This version does not evaluate `/*%if*/`, `/*%for*/`, `/*%expand*/`, embedded variables (`/*# ... */`) or literal variables (`/*^ ... */`). Replace these with a concrete SELECT in **Metadata SQL**. For example, replace `select /*%expand*/* from employee` with `select * from employee`. If a condition changes the projected columns, select the intended projection explicitly. The original template is preserved.
+Simple expansion directives are prepared automatically for metadata lookup:
+
+```sql
+-- No table alias
+select /*%expand*/* from employee
+-- Metadata SQL: select * from employee
+
+-- Literal table alias
+select /*%expand "e" */* from employee e
+-- Metadata SQL: select e.* from employee e
+```
+
+On **Preview**, **Metadata SQL** displays the prepared SELECT. The saved SQL file remains unchanged. Bind comments and test values, including `IN /* ids */(0)`, can remain. A literal alias can use a quoted SQL identifier; arbitrary alias expressions are not evaluated. The database describes `*` or `alias.*`, so metadata generation includes that table's database columns rather than deriving a projection from an existing Doma entity definition.
+
+This version does not evaluate `/*%if*/`, `/*%for*/`, embedded variables (`/*# ... */`) or literal variables (`/*^ ... */`). Replace those with a concrete SELECT in **Metadata SQL**. If a condition changes the projected columns, select the intended projection explicitly.
+
+### JDBC errors
+
+SQLState alone may not identify an Oracle error. Use **Error details...** to check the ORA number, vendor code and whether the failure occurred while connecting, preparing the SELECT, or reading column metadata. If the same SQL works in another client, compare that client's JDBC driver and session/current-schema settings. Share only the diagnostic codes and stage when reporting a failure; connection strings, SQL text and raw driver messages are not included in these details.
 
 SELECTs, joins, aggregates and `WITH ... SELECT` are accepted. Multiple statements, data modifying CTEs and `SELECT ... INTO` are rejected. Validation is intentionally conservative; quote identifiers that match reserved data modification words. It is input validation, not a SQL security sandbox.
 

@@ -227,7 +227,7 @@ class GeneratorTest {
 
     @ParameterizedTest
     @ValueSource(strings = { "delete from employee", "select 1; delete from employee", "select ?",
-            "select /*%expand*/* from employee", "select 1 /*%if enabled*/ where id = 1 /*%end*/",
+            "select /*%expand alias*/* from employee", "select 1 /*%if enabled*/ where id = 1 /*%end*/",
             "select /*# order */1", "select /*^ name */'name'", "select 'unclosed", "select /* broken",
             "with x as (delete from employee returning *) select * from x", "select id into example from employee", "" })
     void rejectsUnresolvedOrNonSelectStatements(String sql) {

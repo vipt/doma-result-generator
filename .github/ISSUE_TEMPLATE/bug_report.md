@@ -16,4 +16,6 @@ about: Report a reproducible generator problem
 
 Do not include credentials, private hosts, production rows or complete connection URLs.
 
-## Error class / SQLState
+## Error class / SQLState / vendor code / ORA number / operation stage
+
+Use the codes shown by Error details. Do not paste raw JDBC messages or connection details.

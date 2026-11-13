@@ -51,7 +51,7 @@
 
       <h3>対応環境と現在の範囲</h3>
       <p><strong>Eclipse 2023-12 / 4.30以降、Java 17以上</strong>を対象にしています。Java開発機能（JDT）、対象プロジェクトのDoma 2設定、JDBCドライバーを用意してください。</p>
-      <p class="note">初期プレビュー版です。H2とDoma 2.57.0で生成・更新処理をテストしています。他DBはJDBCドライバーの実行前メタデータ取得に依存します。Domaの動的SQLは<strong>Metadata SQL</strong>で具体的なSELECTに置き換えてください。旧版クラスの生成元が不明なフィールドは削除せず残します。比較画面の手動操作と、各DBでの検証は今後の確認項目です。</p>
+      <p class="note">初期プレビュー版です。H2とDoma 2.57.0で生成・更新処理をテストしています。他DBはJDBCドライバーの実行前メタデータ取得に依存します。単純な<code>/*%expand*/</code>は自動変換し、条件分岐・ループなどは<strong>Metadata SQL</strong>で具体的なSELECTに置き換えます。DBエラーは<strong>Error details...</strong>でORA番号・失敗段階を確認できます。旧版クラスの生成元が不明なフィールドは削除せず残します。比較画面の手動操作と、各DBでの検証は今後の確認項目です。</p>
       <p class="links"><a href="https://github.com/vipt/doma-result-generator/blob/main/README.ja.md">詳しい使い方</a><a href="https://github.com/vipt/doma-result-generator">ソースコード</a><a href="https://github.com/vipt/doma-result-generator/issues">不具合・要望</a></p>
     </section>
 
@@ -74,7 +74,7 @@
         <li>Use <strong>Jump to Doma SQL</strong> on a Java DAO method call to open its external SQL.</li>
       </ul>
       <p>Requires Eclipse Java IDE <strong>2023-12 / 4.30+</strong>, <strong>Java 17+</strong>, a Doma 2 project and a JDBC driver.</p>
-      <p class="note">Initial preview. Core generation and update tests use H2 and Doma 2.57.0. Other databases depend on pre-execution JDBC metadata support. Replace dynamic Doma directives with a concrete SELECT in Metadata SQL. Uncertain unmarked legacy fields are retained. Manual comparison-dialog checks and database-specific validation remain open.</p>
+      <p class="note">Initial preview. Core generation and update tests use H2 and Doma 2.57.0. Other databases depend on pre-execution JDBC metadata support. Simple <code>/*%expand*/</code> directives are prepared automatically; replace conditions and loops with a concrete SELECT in Metadata SQL. <strong>Error details...</strong> reports Oracle numbers and failure stages. Uncertain unmarked legacy fields are retained. Manual comparison-dialog checks and database-specific validation remain open.</p>
       <p class="links"><a href="https://github.com/vipt/doma-result-generator/blob/main/README.md">Documentation</a><a href="https://github.com/vipt/doma-result-generator">Source</a><a href="https://github.com/vipt/doma-result-generator/issues">Issues</a></p>
     </section>
   </main>

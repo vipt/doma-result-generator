@@ -5,6 +5,7 @@ import io.github.domaresult.core.EntityGenerator;
 import io.github.domaresult.core.GenerationException;
 import io.github.domaresult.core.JavaNames;
 import io.github.domaresult.core.JdbcDriverLoader;
+import io.github.domaresult.core.JdbcErrorDetails;
 import io.github.domaresult.core.JdbcMetadataReader;
 import io.github.domaresult.core.MetadataException;
 import io.github.domaresult.core.SqlInput;
@@ -52,6 +53,7 @@ import org.eclipse.ui.ide.IDE;
 final class GenerateDialog extends TitleAreaDialog {
     private static final int PREVIEW = IDialogConstants.CLIENT_ID + 1;
     private static final int COMPARE = IDialogConstants.CLIENT_ID + 2;
+    private static final int ERROR_DETAILS = IDialogConstants.CLIENT_ID + 3;
     private final IWorkbenchWindow window;
     private final IFile sqlFile;
     private final List<IPackageFragmentRoot> roots;
@@ -61,6 +63,7 @@ final class GenerateDialog extends TitleAreaDialog {
     private StyledText sql, preview;
     private TabFolder tabs;
     private String generated;
+    private String lastJdbcError;
     private ICompilationUnit previewTarget;
     private SourceUpdatePlan updatePlan;
     private final WorkspaceClassUpdater updater = new WorkspaceClassUpdater();
@@ -121,7 +124,7 @@ final class GenerateDialog extends TitleAreaDialog {
         String base = JavaNames.fieldName(sqlFile.getName().replaceFirst("\\.sql$", ""));
         className = fullField(config, "Class name", Character.toUpperCase(base.charAt(0)) + base.substring(1) + "Result", false);
         Composite sqlPage = page("Metadata SQL", 1);
-        note(sqlPage, "Use a concrete SELECT. /* id */0 test literals may remain. Replace dynamic/expand directives. Save the SQL file before opening this dialog.");
+        note(sqlPage, "Simple %expand directives are converted to * or alias.* on Preview. Bind test literals can remain. Replace conditions/loops with concrete SQL. The original file is unchanged.");
         sql = new StyledText(sqlPage, SWT.BORDER | SWT.MULTI | SWT.H_SCROLL | SWT.V_SCROLL);
         sql.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
         sql.setText(initialSql);
@@ -170,10 +173,12 @@ final class GenerateDialog extends TitleAreaDialog {
         generated = null;
         previewTarget = null;
         updatePlan = null;
+        lastJdbcError = null;
         if (getButton(IDialogConstants.OK_ID) != null) {
             getButton(IDialogConstants.OK_ID).setEnabled(false);
             getButton(IDialogConstants.OK_ID).setText("Generate");
             getButton(COMPARE).setEnabled(false);
+            getButton(ERROR_DETAILS).setEnabled(false);
         }
         if (preview != null) preview.setText("");
         setErrorMessage(null);
@@ -182,6 +187,7 @@ final class GenerateDialog extends TitleAreaDialog {
     @Override
     protected void createButtonsForButtonBar(Composite parent) {
         createButton(parent, PREVIEW, "Preview", true);
+        createButton(parent, ERROR_DETAILS, "Error details...", false).setEnabled(false);
         createButton(parent, COMPARE, "Compare changes...", false).setEnabled(false);
         createButton(parent, IDialogConstants.OK_ID, "Generate", false).setEnabled(false);
         createButton(parent, IDialogConstants.CANCEL_ID, IDialogConstants.CANCEL_LABEL, false);
@@ -191,11 +197,13 @@ final class GenerateDialog extends TitleAreaDialog {
     protected void buttonPressed(int id) {
         if (id == PREVIEW) loadPreview();
         else if (id == COMPARE) showChanges();
+        else if (id == ERROR_DETAILS && lastJdbcError != null) MessageDialog.openError(getShell(), "JDBC error details", lastJdbcError);
         else super.buttonPressed(id);
     }
 
     private void loadPreview() {
         invalidatePreview();
+        AtomicReference<JdbcErrorDetails.Stage> stage = new AtomicReference<>(JdbcErrorDetails.Stage.LOADING_DRIVER);
         try {
             String pkg = packageName.getText().trim();
             String name = className.getText().trim();
@@ -213,6 +221,7 @@ final class GenerateDialog extends TitleAreaDialog {
                 throw new IllegalArgumentException("Enter the JDBC driver class and JDBC URL.");
             }
             String query = SqlInput.validate(sql.getText());
+            if (!query.equals(sql.getText())) sql.setText(query);
             List<Path> paths = Arrays.stream(jars.getText().split(";"))
                     .filter(path -> !path.isBlank()).map(String::trim).map(Path::of).toList();
             String driver = driverClass.getText().trim();
@@ -236,12 +245,15 @@ final class GenerateDialog extends TitleAreaDialog {
                         ClassLoader previous = thread.getContextClassLoader();
                         try {
                             thread.setContextClassLoader(loader);
+                            stage.set(JdbcErrorDetails.Stage.CONNECTING);
                             try (var connection = loader.connect(driver, url, username, secret)) {
                                 String fresh = new EntityGenerator().generate(pkg, name,
-                                        new JdbcMetadataReader().read(connection, query, pkg + "." + name, mappings));
+                                        new JdbcMetadataReader().read(connection, query, pkg + "." + name, mappings, stage::set));
                                 result.set(fresh);
+                                stage.set(JdbcErrorDetails.Stage.CLOSING_CONNECTION);
                             }
                         } finally { thread.setContextClassLoader(previous); }
+                        stage.set(JdbcErrorDetails.Stage.CLOSING_DRIVER);
                     }
                     if (existing) {
                         EntityMerger.Result merged = new EntityMerger().merge(before, result.get(), target.getJavaProject().getOptions(true));
@@ -274,9 +286,12 @@ final class GenerateDialog extends TitleAreaDialog {
             Throwable cause = e.getCause();
             // Driver messages may include connection credentials: show no raw driver text.
             if (cause instanceof GenerationException || cause instanceof MetadataException) setErrorMessage(cause.getMessage());
-            else setErrorMessage("Metadata lookup failed (" + cause.getClass().getSimpleName()
-                    + "). Check the JDBC driver, URL, credentials, concrete SQL and supported column types. "
-                    + sqlState(cause));
+            else {
+                JdbcErrorDetails.Info info = JdbcErrorDetails.describe(cause, stage.get(), driverClass.getText().trim().startsWith("oracle."));
+                lastJdbcError = info.details();
+                setErrorMessage(info.summary());
+                getButton(ERROR_DETAILS).setEnabled(true);
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             setErrorMessage("Metadata lookup interrupted.");
@@ -292,12 +307,6 @@ final class GenerateDialog extends TitleAreaDialog {
         SourceCompareInput comparison = new SourceCompareInput(previewTarget.getElementName(), updatePlan.before(), updatePlan.after());
         CompareUI.openCompareDialog(comparison);
         getButton(IDialogConstants.OK_ID).setEnabled(comparison.getCompareResult() != null);
-    }
-
-    private String sqlState(Throwable cause) {
-        if (cause instanceof java.sql.SQLException error && error.getSQLState() != null
-                && error.getSQLState().matches("[A-Za-z0-9]{5}")) return "SQLState: " + error.getSQLState();
-        return "";
     }
 
     @Override

@@ -8,6 +8,7 @@ import java.sql.SQLException;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 public final class JdbcMetadataReader {
     /** Does not execute the query and does not close the caller's connection. */
@@ -17,7 +18,15 @@ public final class JdbcMetadataReader {
 
     public List<ResultColumn> read(Connection connection, String sql, String qualifiedClassName,
             TypeNameMappings mappings) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(SqlInput.validate(sql))) {
+        return read(connection, sql, qualifiedClassName, mappings, stage -> {});
+    }
+
+    public List<ResultColumn> read(Connection connection, String sql, String qualifiedClassName,
+            TypeNameMappings mappings, Consumer<JdbcErrorDetails.Stage> progress) throws SQLException {
+        String prepared = SqlInput.validate(sql);
+        progress.accept(JdbcErrorDetails.Stage.PREPARING_SQL);
+        try (PreparedStatement statement = connection.prepareStatement(prepared)) {
+            progress.accept(JdbcErrorDetails.Stage.READING_COLUMNS);
             ResultSetMetaData metadata = statement.getMetaData();
             if (metadata == null) {
                 throw new MetadataException("This driver cannot describe a SELECT before execution. "
@@ -38,6 +47,7 @@ public final class JdbcMetadataReader {
                         : javaType(metadata.getColumnType(i), label, metadata.getColumnTypeName(i));
                 columns.add(new ResultColumn(label, type));
             }
+            progress.accept(JdbcErrorDetails.Stage.CLOSING_STATEMENT);
             return List.copyOf(columns);
         }
     }

@@ -8,17 +8,22 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Validates concrete metadata SQL; deliberately does not evaluate Doma expressions. */
+/** Prepares metadata SELECTs, including literal expansion directives, without evaluating expressions. */
 public final class SqlInput {
     private static final Set<String> WRITES = Set.of("INSERT", "UPDATE", "DELETE", "MERGE", "CREATE",
             "ALTER", "DROP", "TRUNCATE", "CALL", "EXEC", "EXECUTE", "INTO", "GRANT", "REVOKE");
     private static final Pattern DOLLAR = Pattern.compile("\\$(?:[a-zA-Z_][a-zA-Z_0-9]*)?\\$");
+    private static final Pattern STRING_LITERAL = Pattern.compile("\"(?:[^\"\\\\\\r\\n]|\\\\[btnfr\"'\\\\])*\"");
+    private static final String IDENTIFIER = "(?:[\\p{L}_][\\p{L}\\p{N}_$#]*|\"(?:[^\"]|\"\")+\"|`(?:[^`]|``)+`|\\[(?:[^\\]]|\\]\\])+\\])";
+    private static final Pattern QUALIFIER = Pattern.compile(IDENTIFIER + "(?:\\." + IDENTIFIER + ")*");
+    private record Replacement(int start, int end, String text) {}
 
     private SqlInput() {}
 
     public static String validate(String sql) {
         if (sql == null || sql.isBlank()) throw new GenerationException("Enter a SELECT statement.");
         List<String> words = new ArrayList<>();
+        List<Replacement> replacements = new ArrayList<>();
         int terminal = -1;
         for (int i = 0; i < sql.length();) {
             char c = sql.charAt(i);
@@ -38,10 +43,20 @@ public final class SqlInput {
                     else i++;
                 }
                 if (depth > 0) throw new GenerationException("Unclosed SQL comment.");
-                String comment = sql.substring(start + 2, i - 2).stripLeading();
-                if (comment.startsWith("%") || comment.startsWith("#") || comment.startsWith("^")) {
-                    throw new GenerationException("Replace Doma dynamic/expand directives with concrete metadata SQL. "
-                            + "Bind comments with test literals (/* id */0) can remain.");
+                String comment = sql.substring(start + 2, i - 2).strip();
+                if (comment.equals("%expand") || comment.startsWith("%expand")
+                        && comment.length() > 7 && Character.isWhitespace(comment.charAt(7))) {
+                    if (terminal >= 0) throw new GenerationException("Only one SELECT statement is allowed.");
+                    int star = i;
+                    while (star < sql.length() && Character.isWhitespace(sql.charAt(star))) star++;
+                    if (star >= sql.length() || sql.charAt(star) != '*') {
+                        throw new GenerationException("A Doma %expand directive must be followed by *. Check Metadata SQL.");
+                    }
+                    replacements.add(new Replacement(start, star + 1, expansion(comment.substring(7).strip())));
+                    i = star + 1;
+                } else if (comment.startsWith("%") || comment.startsWith("#") || comment.startsWith("^")) {
+                    throw new GenerationException("Replace conditional, loop or embedded Doma directives with a concrete SELECT in Metadata SQL. "
+                            + "Simple %expand directives and bind comments with test literals (/* id */0) are supported.");
                 }
                 continue;
             }
@@ -82,6 +97,26 @@ public final class SqlInput {
                 || !words.contains("SELECT")) {
             throw new GenerationException("Enter a SELECT or a WITH ... SELECT statement.");
         }
-        return terminal < 0 ? sql : sql.substring(0, terminal) + sql.substring(terminal + 1);
+        if (terminal >= 0) replacements.add(new Replacement(terminal, terminal + 1, ""));
+        StringBuilder prepared = new StringBuilder(sql);
+        for (int index = replacements.size() - 1; index >= 0; index--) {
+            Replacement replacement = replacements.get(index);
+            prepared.replace(replacement.start, replacement.end, replacement.text);
+        }
+        return prepared.toString();
+    }
+
+    private static String expansion(String argument) {
+        if (argument.isEmpty()) return "*";
+        if (!STRING_LITERAL.matcher(argument).matches()) {
+            throw new GenerationException("The %expand alias must be a quoted string literal, for example /*%expand \"e\" */*. "
+                    + "Replace alias expressions with a concrete SELECT in Metadata SQL.");
+        }
+        String alias = argument.substring(1, argument.length() - 1).translateEscapes();
+        if (alias.isEmpty()) return "*";
+        if (alias.chars().anyMatch(Character::isISOControl) || !QUALIFIER.matcher(alias).matches()) {
+            throw new GenerationException("The %expand alias must be a table identifier or quoted table identifier. Check Metadata SQL.");
+        }
+        return alias + ".*";
     }
 }
