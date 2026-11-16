@@ -4,8 +4,6 @@
 
 SELECTの結果を格納するDoma 2用のJavaクラスを生成する、独立したコミュニティ製のEclipseプラグインです。JOINや集計など、1つのテーブルと対応しない検索結果に利用できます。
 
-Daoの呼び出し元から、対応するSQLファイルへ直接移動する機能もあります。
-
 **初期試作版です。** H2とDoma 2.57.0でコア部分をテストします。他DBへの対応はJDBCドライバーの実行前メタデータ取得機能に依存します。Doma・Eclipseの公式製品ではありません。
 
 ## 使い方
@@ -63,23 +61,6 @@ UTF-8 BOM付きの既存クラスも更新でき、BOMは保存時に維持し�
 元の`Generated from SELECT result metadata.`というクラスコメントがあり、管理タグがまだない場合は、現在のSQLと一致する単純な`@Column`付きフィールドと通常のアクセサーを引き継ぎます。コメントや手動メソッドは残し、引き継いだメンバーに管理タグを追加します。
 
 現在のSQLにない旧フィールドは、生成元を確定できないため残してプレビューの案内に表示します。これらの項目は手動で確認してください。管理対象と識別できない同名フィールドや、immutableエンティティ、特殊な宣言は自動更新せず、調整を求めます。
-
-## Daoの呼び出し元からSQLへ移動
-
-Javaエディターで、次の`selectById`のメソッド名にカーソルを合わせ、右クリックして **Jump to Doma SQL** を選びます。
-
-```java
-Employee employee = employeeDao.selectById(id);
-```
-
-`employeeDao`の型が`@org.seasar.doma.Dao`付きの`com.example.dao.EmployeeDao`であれば、ソースフォルダー内の`META-INF/com/example/dao/EmployeeDao/selectById.sql`を開きます。Daoの定義からも同じコマンドを利用できます。Daoのある別のJavaプロジェクトを参照している場合にも対応します。
-
-- `selectById-postgres.sql`などの方言別ファイルを含めて探し、複数の候補がある場合はパス付きの一覧から選択できます。
-- `@Script`のメソッドでは`.script`を開きます。`@Sql`でインラインSQLを指定したメソッドは対象外です。
-- ファイルがない場合は案内を表示します。ファイルの作成やDBへの接続は行いません。
-- **Preferences → General → Keys** で **Jump to Doma SQL** を検索すると、好みのショートカットを設定できます。
-
-対象は、EclipseのJavaビルドパス上のソースフォルダーにある外部SQLです。JAR内のSQLや、Daoインターフェースに宣言されていないサービスのメソッドをたどる検索は対象外です。既存の[Doma Tools](https://marketplace.eclipse.org/content/doma-tools)と併用でき、Doma Tools本体の変更は不要です。
 
 ## 対応範囲
 

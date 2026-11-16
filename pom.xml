@@ -16,7 +16,6 @@
   <modules>
     <module>tests</module>
     <module>plugin</module>
-    <module>navigation-tests</module>
     <module>merge-tests</module>
     <module>feature</module>
     <module>repository</module>

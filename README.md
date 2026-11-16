@@ -4,8 +4,6 @@
 
 An independent Eclipse plug-in that generates a Doma 2 entity from the columns returned by a SELECT. Designed for joins, projections, aggregates and SQL result sets that do not match a single table.
 
-It also opens a DAO's external SQL file directly from a Java method call.
-
 **Status: initial prototype.** The core is exercised with H2 and Doma 2.57.0. Support for another database depends on its JDBC driver's pre-execution metadata support; it is not a claim of compatibility with every database. This is not an official Doma or Eclipse project.
 
 ## Workflow
@@ -106,23 +104,6 @@ Save existing edits before previewing. At Update, the saved source and modificat
 ### Classes from the earlier prototype
 
 For a class with the original `Generated from SELECT result metadata.` header and no ownership tags, the first update can adopt matching simple `@Column(name = ...)` fields and ordinary accessors. Their user comments and custom methods are retained, and ownership tags are added to adopted members. Unmarked old fields absent from the current SQL remain in place, with a preview note, because their ownership cannot be established. Review those fields manually. Arbitrary unmarked field collisions are not overwritten. Immutable entities and unsupported/custom declarations require manual adjustment.
-
-## Jump from a DAO call to SQL
-
-In the Java editor, place the cursor on `selectById` in a call such as:
-
-```java
-Employee employee = employeeDao.selectById(id);
-```
-
-Right-click and select **Jump to Doma SQL**. If the method is declared in `com.example.dao.EmployeeDao`, annotated with `@org.seasar.doma.Dao`, the command opens `META-INF/com/example/dao/EmployeeDao/selectById.sql` under a source folder on that DAO's build path. It also works on DAO method declarations and across referenced workspace Java projects.
-
-- Dialect variants such as `selectById-postgres.sql` are included. Multiple matches appear in a picker showing their workspace paths.
-- `@Script` methods open `.script` files. Inline `@Sql` methods are skipped.
-- A missing file displays an explanation. Navigation does not create files or connect to a database.
-- Assign a shortcut under **Preferences → General → Keys → Jump to Doma SQL**.
-
-This feature searches workspace source folders on the DAO's Java build path. SQL files inside JARs and tracing through arbitrary service wrappers are outside its scope. It can coexist with [Doma Tools](https://marketplace.eclipse.org/content/doma-tools); no changes to Doma Tools itself are required.
 
 ## SQL templates
 
@@ -241,8 +222,6 @@ Run portable core tests without resolving the Eclipse target platform:
 ```
 
 Tests cover join/aggregate metadata, empty results, no query execution, driver isolation, names/aliases, template validation, ordered name rules and Java 8 compilation with the real Doma annotation processor. Integration tests compile generated entities and DAOs, then read actual H2 rows through Doma, including an overridden LocalDateTime property and a custom domain.
-
-The complete build also runs `navigation-tests` in a headless Eclipse runtime, using real JDT Java projects to check symbol resolution, unsaved working copies, referenced projects, dialect variants and exclusion of unrelated methods and build output copies.
 
 ## Relationship to the official generator
 

@@ -34,7 +34,6 @@ jobs:
           name: test-reports
           path: |
             tests/target/surefire-reports/
-            navigation-tests/target/surefire-reports/
             merge-tests/target/surefire-reports/
           retention-days: 14
           if-no-files-found: ignore

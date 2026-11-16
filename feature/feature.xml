@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <feature id="io.github.domaresult.feature" label="Doma Result Generator" version="0.1.0.qualifier" provider-name="Doma Result Generator contributors">
-  <description>Generate Doma 2 result entities from SELECT metadata and open external SQL files from DAO method calls. An independent community project.</description>
+  <description>Generate Doma 2 result entities from SELECT metadata. An independent community project.</description>
   <copyright>Copyright 2026 Doma Result Generator contributors</copyright>
   <license url="https://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0. See the included LICENSE file.</license>
   <plugin id="io.github.domaresult.eclipse" download-size="0" install-size="0" version="0.0.0" unpack="false"/>
