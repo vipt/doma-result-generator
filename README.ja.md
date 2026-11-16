@@ -10,28 +10,40 @@ SELECTの結果を格納するDoma 2用のJavaクラスを生成する、独立�
 
 1. EclipseのJavaプロジェクト内でSQLファイルを保存します。
 2. Package Explorer・Project ExplorerのSQLファイル、または開いているSQLファイルのエディター上で右クリックし、**Generate Doma Result Class...**を選びます。
-3. JDBCドライバーのJAR、ドライバークラス、接続URL、ユーザー名・パスワードを入力します。依存JARがある場合は複数指定できます。
+3. **Connection profile**で登録済みの接続を選ぶか、JDBCドライバーのJAR、ドライバークラス、接続URL、ユーザー名・パスワードを入力します。依存JARがある場合は複数指定できます。
 4. 出力先のソースフォルダー、パッケージ、クラス名を指定します。名前から型を指定する場合は**Type mappings (optional)**で設定ファイルを選びます。プロジェクト直下に`name.properties`があれば初期選択されます。
 5. **Metadata SQL**で型確認用SQLを確認し、**Preview**を押します。
 6. **Proposed Java**で結果を確認します。新規クラスは**Generate**、既存クラスは差分を確認して**Update**を押します。
 
 `@Entity`、列の別名に対応する`@Column`、privateフィールド、publicのgetter/setterを生成します。アノテーションとプロパティの型をimportし、`@Column`・`BigDecimal`・`LocalDateTime`などの短い型名で出力します。`java.lang`の型と、エンティティと同じパッケージの型はimport不要です。同名の型や手動コードと衝突する場合は、その参照だけ完全修飾名を使います。既存クラスは差分確認後に更新できます。DAOやプロジェクト設定は変更しないため、生成したクラスをDAOの戻り値に指定してください。
 
-Driver JARs・Driver class・JDBC URL・Username・Packageは、ダイアログを閉じるとプロジェクトごとにローカルのワークスペースへ保存します。**Cancel**で閉じた場合も保持し、次回起動時やEclipse再起動後に復元します。Packageは前回入力した文字列を初期値にします。初回は`com.example.dto`です。プロジェクト内のファイルには書き込みません。ソースフォルダー・クラス名・編集したMetadata SQLは保持しません。
+接続プロファイルは同じワークスペースのプロジェクト間で共有できます。プロジェクトごとに最後に選択したプロファイルとPackageを保持し、**Cancel**で閉じた場合やEclipse再起動後も復元します。**Unregistered (project settings)**では、従来どおりDriver JARs・Driver class・JDBC URL・Usernameをプロジェクト別に保持します。Packageは前回入力した文字列を初期値にし、初回は`com.example.dto`です。プロジェクト内のファイルには書き込みません。ソースフォルダー・クラス名・編集したMetadata SQLは保持しません。
 
 SQLエディターから起動した場合、Eclipseのテキストバッファーにある編集中のSQLを使用し、元のファイルは保存しません。未保存の編集を取得できないエディターでは、SQLの保存を求めます。Explorerから起動した場合は保存済みのSQLを使用します。
 
 `.SQL`・`.Sql`などの大文字小文字が混在する拡張子にも対応し、`selectAll.SQL`の初期クラス名は`SelectAllResult`になります。
 
-パスワードは**Save password in Eclipse Secure Storage**で保存するかを選べます。初期状態ではオフです。オンの場合、Password欄を[EclipseのSecure Storage](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.isv/guide/secure_storage_architecture.htm)に暗号化して保存します。Eclipseからロック解除を求められる場合があります。チェックを外すかPassword欄を空にしてダイアログを閉じると、保存済みのパスワードを削除します。通常の設定ファイルにはパスワードを書き込みません。Driver class・JDBC URL・Usernameを変更すると、復元済みのパスワードをクリアします。認証情報はUsername・Password欄へ入力してください。Oracleの`user/password@...`や`password=...`、URLのユーザー情報など、認証情報を含むURLは保持しません。Secure Storageの読み込みや更新に失敗した場合は通知し、平文での代替保存は行いません。
+パスワードは**Save password in Eclipse Secure Storage**で保存するかを選べます。初期状態ではオフです。オンの場合、Password欄を[EclipseのSecure Storage](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.isv/guide/secure_storage_architecture.htm)に暗号化して保存します。Eclipseからロック解除を求められる場合があります。チェックを外すかPassword欄を空にし、プロファイルでは**Update profile**、未登録設定ではダイアログを閉じると、対象の保存済みパスワードを削除します。通常の設定ファイルにはパスワードを書き込みません。Driver class・JDBC URL・Usernameを変更すると、復元済みのパスワードをクリアします。認証情報はUsername・Password欄へ入力してください。Oracleの`user/password@...`や`password=...`、URLのユーザー情報など、認証情報を含むURLは保持しません。Secure Storageの読み込みや更新に失敗した場合は通知し、平文での代替保存は行いません。
 
 ドライバーは同梱せず、利用者が別途用意します。DBエラーでは、失敗した段階、例外クラス、SQLState、ベンダーエラー番号、取得できる場合はOracleのORA番号を表示します。**Error details...**から詳細を確認できます。接続情報を含む可能性があるドライバーの例外本文は表示・記録しません。
+
+### 接続プロファイルの登録と共有
+
+1. 既存の接続設定があるプロジェクトで生成ダイアログを開きます。**Connection profile → Unregistered (project settings)**に従来の接続情報が表示されます。保存済みパスワードも、Secure Storageから読み込めればそのまま利用できます。
+2. **Save as...**を押し、「開発DB」「検証DB」などの名前を付けます。表示中のDriver JARs・Driver class・JDBC URL・Username・Preview timeoutと、パスワード保存の選択を登録します。再入力は不要です。
+3. 別プロジェクトで生成ダイアログを開き、**Connection profile**から登録した名前を選びます。接続設定が一括で入り、以降はそのプロジェクトの前回選択を復元します。
+
+共有設定を編集した場合は**Update profile**で確定します。同じプロファイルを使う他のプロジェクトでも、次に開いたときに変更が反映されます。別の接続として残す場合は**Save as...**を使います。生成ダイアログを閉じるだけでは共有設定を上書きしません。Package・Class name・出力先・型マッピングファイル・Metadata SQLは共有しません。
+
+**Manage...**では名前変更・削除ができます。名前変更後もプロジェクトの選択を維持します。削除すると、そのプロファイル専用の保存パスワードも削除し、使用していたプロジェクトは未登録設定に戻ります。登録元のプロジェクト別設定は残します。
+
+別ワークスペースへ移す場合は、管理画面の**Export all... / Import...**を使います。UTF-8のpropertiesファイルに接続URL・ユーザー名・ローカルのJARパスなどを出力しますが、パスワードは含めません。インポート後はパスワードを入力し、JARパスを確認してください。同名のプロファイルがある場合は名前に連番を付けて追加し、既存設定を上書きしません。
 
 ### 接続待ちのキャンセルとタイムアウト
 
 **Preview**中は進捗ダイアログの**Cancel**で待機を中止できます。DBへの接続が返らない場合も、JDBCドライバーの終了を待たずに生成ダイアログへ戻ります。Javaファイルは変更せず、設定を直して再度Previewできます。
 
-**Configuration → Preview timeout (seconds)**でプレビュー全体の待ち時間の上限を指定できます。初期値は**30秒**、範囲は1～600秒です。接続・メタデータ取得・クラス生成・既存クラスの更新案作成を含みます。この設定もプロジェクトごとに保持し、生成ダイアログをCancelで閉じても保存します。Oracleドライバーでは、同じ秒数を接続とソケット読み取りのタイムアウトにも設定します。他のドライバー固有のタイムアウトは、各ドライバーの説明に従ってJDBC URLで指定してください。
+**Configuration → Preview timeout (seconds)**でプレビュー全体の待ち時間の上限を指定できます。初期値は**30秒**、範囲は1～600秒です。接続・メタデータ取得・クラス生成・既存クラスの更新案作成を含みます。プロファイル利用時はUpdate profileで保存し、未登録設定ではプロジェクトごとに保持します。Oracleドライバーでは、同じ秒数を接続とソケット読み取りのタイムアウトにも設定します。他のドライバー固有のタイムアウトは、各ドライバーの説明に従ってJDBC URLで指定してください。
 
 キャンセルや時間切れでは、処理への割り込み、ステートメントのキャンセル、取得済み接続の中断を試みます。ドライバーが応答しない場合はバックグラウンドで終了を待ちますが、遅れて返った結果は適用せず、接続は解放します。終了待ちが2件残っている間は追加のPreviewを受け付けず、その旨を表示します。
 
@@ -42,7 +54,7 @@ SQLエディターから起動した場合、Eclipseのテキストバッファ�
 1. Eclipseの設定（macOSでは通常`⌘,`）を開きます。
 2. **General → Security → Secure Storage → Password**を開きます。
 3. **Master password providers**で**OS X Keystore Integration**のチェックを外し、**UI Prompt**を有効にします。
-4. **Apply and Close**で適用します。生成ダイアログを開き、DBのPasswordを再入力して**Save password in Eclipse Secure Storage**をオンにし、ダイアログを閉じます。**Cancel**で閉じても保存します。
+4. **Apply and Close**で適用します。生成ダイアログを開き、DBのPasswordを再入力して**Save password in Eclipse Secure Storage**をオンにします。接続プロファイルでは**Update profile**で保存します。未登録設定ではダイアログを閉じると保存し、**Cancel**でも保存します。
 5. 表示される入力画面で、Eclipseの保存情報を暗号化するためのマスターパスワードを設定または入力します。その後、生成ダイアログを開き直してPasswordが復元されることを確認します。
 
 **UI PromptでもSecure Storageによる暗号化保存を利用します。**変更するのはマスターパスワードの取得方法です。この設定はEclipse全体で新しく保存する情報に影響し、既存の保存情報は自動移行されません。詳しくは[EclipseのSecure Storage設定](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-prefs.htm)と[動作の説明](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-works.htm)を参照してください。

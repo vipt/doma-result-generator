@@ -10,7 +10,7 @@ An independent Eclipse plug-in that generates a Doma 2 entity from the columns r
 
 1. Save a `.sql` file in an Eclipse Java project.
 2. Right-click the SQL file in Package Explorer or Project Explorer, or inside its open SQL editor, and select **Generate Doma Result Class...**.
-3. Select your JDBC driver JAR(s), and enter the driver class, URL and credentials. Drivers are supplied separately, so vendor libraries are not redistributed.
+3. Select a saved **Connection profile**, or select your JDBC driver JAR(s) and enter the driver class, URL and credentials. Drivers are supplied separately, so vendor libraries are not redistributed.
 4. Select a Java source folder, package and class name. Optionally select a UTF-8 type mapping file; `name.properties` in the project root is initially selected when present.
 5. Review the **Metadata SQL** tab. It starts with the saved SQL file. Changes made here are used for metadata lookup and do not change the SQL file.
 6. Select **Preview** and review **Proposed Java**. For a new class, select **Generate**. For an existing class, review the comparison and select **Update**.
@@ -19,21 +19,33 @@ The plug-in uses `Connection.prepareStatement(...).getMetaData()`. It does not c
 
 Generated fields are private, with public getters/setters. Annotations and property types use imports and short names, including `@Entity`, `@Column`, `BigDecimal` and `LocalDateTime`. Types in `java.lang` or the entity's own package do not need imports. If a short name conflicts with another type or retained handwritten code, that reference stays qualified.
 
-Driver JAR paths, driver class, JDBC URL, username and Package are remembered per project in the local workspace when the dialog closes, including **Cancel**. They are restored on the next opening and after restarting Eclipse. Package defaults to the exact previously entered text, or `com.example.dto` on first use. They are not written into project files. Source folder, class name and edited Metadata SQL are not remembered.
+Connection profiles are shared across projects in the same workspace. The last selected profile and Package are remembered per project, including on **Cancel** and after restarting Eclipse. With **Unregistered (project settings)**, driver JAR paths, driver class, JDBC URL and username are remembered per project as before. Package defaults to the exact previously entered text, or `com.example.dto` on first use. These settings are not written into project files. Source folder, class name and edited Metadata SQL are not remembered.
 
 From a SQL editor, the generator reads the current Eclipse text buffer, including unsaved edits, without saving the file. An editor whose unsaved content cannot be read asks you to save first. From Explorer, it reads the saved SQL file.
 
 SQL extensions are case-insensitive in both the menu and default class name: `selectAll.SQL` defaults to `SelectAllResult`.
 
-**Save password in Eclipse Secure Storage** is off by default. Select it to save the Password field using [Eclipse encrypted secure preferences](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.isv/guide/secure_storage_architecture.htm); Eclipse may ask to unlock its storage. Clear it, or empty the Password field, and close the dialog to remove the saved password. Passwords are never saved in ordinary workspace preferences. Changing the driver class, URL or username clears the restored password. Use the separate Username and Password fields: URLs with embedded credentials, such as Oracle `user/password@...`, query `password=...`, or URL user info, are not remembered. If Secure Storage cannot be read or updated, the dialog reports it without falling back to plaintext.
+**Save password in Eclipse Secure Storage** is off by default. Select it to save the Password field using [Eclipse encrypted secure preferences](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.isv/guide/secure_storage_architecture.htm); Eclipse may ask to unlock its storage. To remove the saved password, clear the checkbox or Password field, then select **Update profile** for a profile or close the dialog for unregistered settings. Passwords are never saved in ordinary workspace preferences. Changing the driver class, URL or username clears the restored password. Use the separate Username and Password fields: URLs with embedded credentials, such as Oracle `user/password@...`, query `password=...`, or URL user info, are not remembered. If Secure Storage cannot be read or updated, the dialog reports it without falling back to plaintext.
 
 Raw driver exceptions are not logged or displayed, since they may include connection details. Driver errors show the operation stage, SQLState, vendor error code and Oracle ORA number when available. **Error details...** shows these codes and phase-specific guidance; generator errors give actionable explanations. Use your normal trusted driver and database connection settings. Driver-specific timeout and SSL settings can be supplied in the JDBC URL according to the driver's documentation.
+
+### Registering and sharing connection profiles
+
+1. Open the generator in a project with existing saved settings. **Connection profile → Unregistered (project settings)** shows its previous connection. An existing password is restored when Secure Storage can read it.
+2. Select **Save as...** and name the connection, for example Development or QA. This registers the displayed driver JAR paths, driver class, JDBC URL, username, Preview timeout and password-saving choice without re-entering them.
+3. In another project, select that name under **Connection profile** to fill the connection settings. Each project restores its last selected profile on subsequent openings.
+
+Select **Update profile** to save shared connection edits. Other projects using it receive the changes the next time they open the generator. Use **Save as...** to create a separate connection. Closing the generator does not overwrite shared profiles. Package, class name, output location, type mapping file and Metadata SQL are not shared.
+
+**Manage...** offers rename and delete. Renaming preserves project selections. Deleting removes the profile's own saved password and projects using it return to their unregistered settings. The original project's unregistered settings are retained.
+
+Use **Export all... / Import...** in the manager to move profiles to another workspace. The UTF-8 properties file includes URLs, usernames and local JAR paths, and excludes passwords. Re-enter passwords and check driver paths after importing. Name collisions receive a numbered suffix; existing profiles are not overwritten.
 
 ### Canceling a preview and limiting the wait
 
 During **Preview**, select **Cancel** in the progress dialog to stop waiting and return to the generator, even when the JDBC driver has not returned from connecting. No Java files are changed. Adjust the settings and select Preview again.
 
-**Configuration → Preview timeout (seconds)** limits the entire preview, including connecting, reading metadata, generating the class and preparing an existing-class update. It defaults to **30 seconds**, accepts 1–600 seconds and is remembered per project, including when the generator is closed with Cancel. For Oracle drivers, the same duration also sets the connection and socket-read timeouts. Configure other drivers' own timeouts through their JDBC URL as documented by the vendor.
+**Configuration → Preview timeout (seconds)** limits the entire preview, including connecting, reading metadata, generating the class and preparing an existing-class update. It defaults to **30 seconds** and accepts 1–600 seconds. Save it with Update profile for a shared profile; unregistered settings remember it per project. For Oracle drivers, the same duration also sets the connection and socket-read timeouts. Configure other drivers' own timeouts through their JDBC URL as documented by the vendor.
 
 Cancellation and timeout attempt to interrupt the work, cancel its statement and abort an acquired connection. A driver that ignores these requests may continue in the background; late results are discarded and connections are released when control returns. At most two unfinished previews are allowed. If both remain stuck, another Preview reports that the earlier attempts must finish first.
 
@@ -44,7 +56,7 @@ If saving shows `Connection settings or the saved password could not be updated.
 1. Open Eclipse settings/preferences, usually with `⌘,` on macOS.
 2. Open **General → Security → Secure Storage → Password**.
 3. Under **Master password providers**, clear **OS X Keystore Integration** and enable **UI Prompt**.
-4. Select **Apply and Close**. Open the generator, re-enter the database Password, select **Save password in Eclipse Secure Storage**, and close the dialog. Closing with **Cancel** also saves these settings.
+4. Select **Apply and Close**. Open the generator, re-enter the database Password and select **Save password in Eclipse Secure Storage**. Select **Update profile** for a connection profile. For unregistered settings, close the dialog; **Cancel** also saves them.
 5. In the prompt, create or enter the master password used to encrypt Eclipse's saved information. Reopen the generator to confirm the database Password is restored.
 
 **UI Prompt still uses encrypted Eclipse Secure Storage.** Only the way Eclipse obtains its master password changes. This setting affects newly saved information throughout Eclipse; existing entries are not migrated automatically. See the official [Secure Storage preferences](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-prefs.htm) and [how Secure Storage works](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-works.htm).

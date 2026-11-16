@@ -7,7 +7,7 @@
     <groupId>org.eclipse.tycho</groupId><artifactId>tycho-surefire-plugin</artifactId><version>${tycho.version}</version>
     <configuration>
       <useUIHarness>false</useUIHarness><useUIThread>false</useUIThread>
-      <includes><include>**/WorkspaceClassUpdaterTest.class</include><include>**/SourceCompareInputTest.class</include><include>**/ConnectionSettingsStoreTest.class</include><include>**/GenerateHandlerTest.class</include></includes>
+      <includes><include>**/WorkspaceClassUpdaterTest.class</include><include>**/SourceCompareInputTest.class</include><include>**/ConnectionSettingsStoreTest.class</include><include>**/ConnectionProfileStoreTest.class</include><include>**/GenerateHandlerTest.class</include></includes>
     </configuration>
   </plugin></plugins></build>
 </project>

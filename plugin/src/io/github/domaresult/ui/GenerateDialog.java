@@ -33,10 +33,13 @@ import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
 import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.jface.dialogs.IMessageProvider;
+import org.eclipse.jface.dialogs.InputDialog;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.dialogs.ProgressMonitorDialog;
 import org.eclipse.jface.dialogs.TitleAreaDialog;
+import org.eclipse.jface.window.Window;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.ScrolledComposite;
 import org.eclipse.swt.custom.StyledText;
 import org.eclipse.swt.events.ModifyListener;
 import org.eclipse.swt.graphics.Point;
@@ -65,6 +68,12 @@ final class GenerateDialog extends TitleAreaDialog {
     private final List<IPackageFragmentRoot> roots;
     private final String initialSql;
     private final ConnectionSettingsStore connectionSettings;
+    private final ConnectionProfileStore profileStore;
+    private List<ConnectionProfileStore.Profile> profiles = List.of();
+    private String selectedProfileId;
+    private Combo profileSelection;
+    private Button updateProfile;
+    private boolean connectionDirty, applyingConnection;
     private Text jars, driverClass, jdbcUrl, user, password, packageName, className, typeMappingsFile;
     private Button savePassword;
     private Spinner previewTimeout;
@@ -90,6 +99,7 @@ final class GenerateDialog extends TitleAreaDialog {
         this.roots = roots;
         this.initialSql = initialSql;
         this.connectionSettings = ConnectionSettingsStore.forProject(file.getProject());
+        this.profileStore = ConnectionProfileStore.forWorkspace(file.getProject());
         setShellStyle(getShellStyle() | SWT.RESIZE);
     }
 
@@ -100,8 +110,10 @@ final class GenerateDialog extends TitleAreaDialog {
         Composite area = (Composite) super.createDialogArea(parent);
         tabs = new TabFolder(area, SWT.NONE);
         tabs.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
-        Composite config = page("Configuration", 3);
-        var saved = connectionSettings.load();
+        Composite config = configurationPage();
+        createProfileControls(config);
+        ConnectionSettingsStore initialSettings = selectedConnectionSettings();
+        var saved = initialSettings.load();
         jars = field(config, "Driver JARs", saved.jars(), false);
         Button browse = new Button(config, SWT.PUSH);
         browse.setText("Browse...");
@@ -120,20 +132,20 @@ final class GenerateDialog extends TitleAreaDialog {
         previewTimeout = new Spinner(config, SWT.BORDER);
         previewTimeout.setMinimum(1);
         previewTimeout.setMaximum(PreviewExecution.MAX_TIMEOUT_SECONDS);
-        previewTimeout.setSelection(connectionSettings.loadPreviewTimeout());
+        previewTimeout.setSelection(initialSettings.loadPreviewTimeout());
         previewTimeout.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
         user = fullField(config, "Username", saved.username(), false);
         password = fullField(config, "Password", "", true);
         savePassword = new Button(config, SWT.CHECK);
         savePassword.setText("Save password in Eclipse Secure Storage");
         savePassword.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 3, 1));
-        savePassword.setSelection(connectionSettings.remembersPassword());
-        try { password.setText(connectionSettings.loadPassword(saved)); }
+        savePassword.setSelection(initialSettings.remembersPassword());
+        try { password.setText(initialSettings.loadPassword(saved)); }
         catch (IOException e) {
             passwordReadFailed = true;
             setMessage("The saved password could not be read. Enter it to connect, or clear Save password to remove it.", IMessageProvider.WARNING);
         }
-        note(config, "Connection defaults are remembered locally per project, including on Cancel. Password saving is optional; Secure Storage may ask to unlock.");
+        note(config, "Update profile saves shared connection edits. Unregistered settings are remembered per project on close, including Cancel. Password saving is optional.");
         note(config, "Use Username and Password for credentials. URLs containing embedded credentials are not remembered.");
         IFile defaults = sqlFile.getProject().getFile("name.properties");
         String defaultFile = defaults.exists() && defaults.getLocation() != null ? defaults.getLocation().toOSString() : "";
@@ -175,12 +187,165 @@ final class GenerateDialog extends TitleAreaDialog {
         previewTimeout.addModifyListener(invalidate);
         sqlSyntax.addModifyListener(invalidate);
         ModifyListener clearPassword = e -> {
+            if (applyingConnection) return;
             passwordReadFailed = false;
             password.setText("");
         };
         for (Text input : List.of(driverClass, jdbcUrl, user)) input.addModifyListener(clearPassword);
         password.addModifyListener(e -> passwordReadFailed = false);
+        ModifyListener markConnection = e -> connectionEdited();
+        for (Text input : List.of(jars, driverClass, jdbcUrl, user, password)) input.addModifyListener(markConnection);
+        previewTimeout.addModifyListener(markConnection);
+        savePassword.addListener(SWT.Selection, e -> connectionEdited());
         return area;
+    }
+
+    private Composite configurationPage() {
+        TabItem tab = new TabItem(tabs, SWT.NONE);
+        tab.setText("Configuration");
+        ScrolledComposite scroll = new ScrolledComposite(tabs, SWT.V_SCROLL);
+        scroll.setExpandHorizontal(true);
+        scroll.setExpandVertical(true);
+        Composite body = new Composite(scroll, SWT.NONE);
+        body.setLayout(new GridLayout(3, false));
+        scroll.setContent(body);
+        scroll.setShowFocusedControl(true);
+        scroll.addListener(SWT.Resize, e -> scroll.setMinSize(body.computeSize(scroll.getClientArea().width, SWT.DEFAULT)));
+        tab.setControl(scroll);
+        return body;
+    }
+
+    private void createProfileControls(Composite config) {
+        new Label(config, SWT.NONE).setText("Connection profile");
+        Composite row = new Composite(config, SWT.NONE);
+        row.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
+        GridLayout layout = new GridLayout(4, false);
+        layout.marginWidth = layout.marginHeight = 0;
+        row.setLayout(layout);
+        profileSelection = new Combo(row, SWT.READ_ONLY);
+        GridData comboData = new GridData(SWT.FILL, SWT.CENTER, true, false);
+        comboData.widthHint = 180;
+        profileSelection.setLayoutData(comboData);
+        updateProfile = new Button(row, SWT.PUSH);
+        updateProfile.setText("Update profile");
+        updateProfile.setEnabled(false);
+        updateProfile.addListener(SWT.Selection, e -> saveProfile(false));
+        Button saveAs = new Button(row, SWT.PUSH);
+        saveAs.setText("Save as...");
+        saveAs.addListener(SWT.Selection, e -> saveProfile(true));
+        Button manage = new Button(row, SWT.PUSH);
+        manage.setText("Manage...");
+        manage.addListener(SWT.Selection, e -> manageProfiles());
+        try { refreshProfiles(connectionSettings.loadSelectedProfile()); }
+        catch (IOException e) {
+            profileSelection.setItems(new String[] { ConnectionProfileStore.UNREGISTERED });
+            profileSelection.select(0);
+            setMessage("Connection profiles could not be read. The project's unregistered settings are shown.", IMessageProvider.WARNING);
+        }
+        profileSelection.addListener(SWT.Selection, e -> {
+            int index = profileSelection.getSelectionIndex();
+            String next = index <= 0 ? null : profiles.get(index - 1).id();
+            if (java.util.Objects.equals(next, selectedProfileId)) return;
+            if (connectionDirty && !MessageDialog.openQuestion(getShell(), "Unsaved connection edits",
+                    "Switching profiles discards the current connection edits. Use Update profile or Save as to keep them. Switch anyway?")) {
+                selectProfileInCombo();
+                return;
+            }
+            selectedProfileId = next;
+            applyConnectionSettings();
+        });
+    }
+
+    private ConnectionSettingsStore selectedConnectionSettings() {
+        return selectedProfileId == null ? connectionSettings : profileStore.settings(selectedProfileId);
+    }
+
+    private void refreshProfiles(String selected) throws IOException {
+        profiles = profileStore.list();
+        selectedProfileId = profiles.stream().anyMatch(p -> p.id().equals(selected)) ? selected : null;
+        profileSelection.removeAll();
+        profileSelection.add(ConnectionProfileStore.UNREGISTERED);
+        profiles.forEach(p -> profileSelection.add(p.name()));
+        selectProfileInCombo();
+    }
+
+    private void selectProfileInCombo() {
+        int index = 0;
+        for (int i = 0; i < profiles.size(); i++) if (profiles.get(i).id().equals(selectedProfileId)) index = i + 1;
+        profileSelection.select(index);
+    }
+
+    private void applyConnectionSettings() {
+        ConnectionSettingsStore settings = selectedConnectionSettings();
+        var saved = settings.load();
+        applyingConnection = true;
+        try {
+            jars.setText(saved.jars());
+            driverClass.setText(saved.driverClass());
+            jdbcUrl.setText(saved.url());
+            user.setText(saved.username());
+            previewTimeout.setSelection(settings.loadPreviewTimeout());
+            savePassword.setSelection(settings.remembersPassword());
+            password.setText("");
+            passwordReadFailed = false;
+            try { password.setText(settings.loadPassword(saved)); }
+            catch (IOException e) { passwordReadFailed = true; }
+        } finally { applyingConnection = false; }
+        connectionDirty = false;
+        updateProfile.setEnabled(false);
+        invalidatePreview();
+        setMessage(passwordReadFailed ? "The saved password could not be read. Enter it to connect, or clear Save password and update the profile."
+                : "Connection settings loaded. Check Metadata SQL and select Preview.", passwordReadFailed ? IMessageProvider.WARNING : IMessageProvider.NONE);
+    }
+
+    private void connectionEdited() {
+        if (applyingConnection) return;
+        connectionDirty = true;
+        updateProfile.setEnabled(selectedProfileId != null);
+    }
+
+    private ConnectionSettingsStore.Connection enteredConnection() {
+        return new ConnectionSettingsStore.Connection(jars.getText(), driverClass.getText().trim(), jdbcUrl.getText().trim(), user.getText());
+    }
+
+    private String passwordToSave() {
+        return passwordReadFailed && password.getText().isEmpty() ? null : password.getText();
+    }
+
+    private void saveProfile(boolean saveAs) {
+        try {
+            if (saveAs) {
+                InputDialog input = new InputDialog(getShell(), "Save connection profile", "Name for this connection (shared by projects in this workspace):", "", value -> {
+                    try { return profileStore.nameProblem(value, null); }
+                    catch (IOException e) { return "Cannot read connection profiles."; }
+                });
+                if (input.open() != Window.OK) return;
+                var profile = profileStore.create(input.getValue(), enteredConnection(), previewTimeout.getSelection(), savePassword.getSelection(), passwordToSave());
+                selectedProfileId = profile.id();
+            } else {
+                profileStore.update(selectedProfileId, enteredConnection(), previewTimeout.getSelection(), savePassword.getSelection(), passwordToSave());
+            }
+            refreshProfiles(selectedProfileId);
+            savePassword.setSelection(selectedConnectionSettings().remembersPassword());
+            connectionDirty = false;
+            updateProfile.setEnabled(false);
+            setMessage("Connection profile saved. It is available to all projects in this workspace.");
+        } catch (IOException | IllegalArgumentException e) {
+            MessageDialog.openError(getShell(), "Connection profiles", e.getMessage());
+        }
+    }
+
+    private void manageProfiles() {
+        new ConnectionProfilesDialog(getShell(), profileStore).open();
+        try {
+            String previous = selectedProfileId;
+            refreshProfiles(previous);
+            if (!java.util.Objects.equals(previous, selectedProfileId)) applyConnectionSettings();
+            else {
+                if (!connectionDirty) savePassword.setSelection(selectedConnectionSettings().remembersPassword());
+                updateProfile.setEnabled(selectedProfileId != null && connectionDirty);
+            }
+        } catch (IOException e) { MessageDialog.openError(getShell(), "Connection profiles", e.getMessage()); }
     }
 
     private Composite page(String name, int columns) {
@@ -426,11 +591,12 @@ final class GenerateDialog extends TitleAreaDialog {
     public boolean close() {
         if (password != null && !password.isDisposed()) {
             try {
-                connectionSettings.savePreviewTimeout(previewTimeout.getSelection());
                 connectionSettings.savePackageName(packageName.getText());
-                connectionSettings.save(new ConnectionSettingsStore.Connection(jars.getText(), driverClass.getText().trim(),
-                        jdbcUrl.getText().trim(), user.getText()), savePassword.getSelection(),
-                        passwordReadFailed && password.getText().isEmpty() ? null : password.getText());
+                connectionSettings.saveSelectedProfile(selectedProfileId);
+                if (selectedProfileId == null) {
+                    connectionSettings.savePreviewTimeout(previewTimeout.getSelection());
+                    connectionSettings.save(enteredConnection(), savePassword.getSelection(), passwordToSave());
+                }
             } catch (IOException e) {
                 MessageDialog.openWarning(getShell(), "Connection settings", "Connection settings or the saved password could not be updated. "
                         + "Check workspace permissions and Eclipse Secure Storage under Preferences > General > Security > Secure Storage.");

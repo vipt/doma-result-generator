@@ -20,7 +20,7 @@ import org.osgi.service.prefs.Preferences;
 
 /** Keeps project connection defaults in the workspace; passwords only in encrypted storage. */
 final class ConnectionSettingsStore {
-    private static final String PLUGIN = "io.github.domaresult.eclipse";
+    static final String PLUGIN = "io.github.domaresult.eclipse";
     private static final Pattern URL_CREDENTIALS = Pattern.compile(
             "(?i)(?:password|passwd|pwd|(?:access[_-]?)?token|secret|credential)\\s*[=:]|://[^/?#]*@|^jdbc:oracle:[^:]+:[^@]+@");
     record Connection(String jars, String driverClass, String url, String username) {}
@@ -48,6 +48,14 @@ final class ConnectionSettingsStore {
 
     boolean remembersPassword() { return preferences.getBoolean("rememberPassword", false); }
 
+    String loadSelectedProfile() { return preferences.get("connectionProfile", ""); }
+
+    void saveSelectedProfile(String id) throws IOException {
+        if (id == null || id.isEmpty()) preferences.remove("connectionProfile");
+        else preferences.put("connectionProfile", id);
+        flush();
+    }
+
     String loadPackageName() { return preferences.get("packageName", "com.example.dto"); }
 
     void savePackageName(String value) throws IOException {
@@ -67,18 +75,21 @@ final class ConnectionSettingsStore {
     }
 
     String loadPassword(Connection connection) throws IOException {
-        if (!remembersPassword() || !binding(connection).equals(preferences.get("passwordBinding", ""))) return "";
+        if (!canPreservePassword(connection)) return "";
         try {
             ISecurePreferences root = secure();
             return root.nodeExists(securePath) ? root.node(securePath).get("password", "") : "";
         } catch (StorageException e) { throw new IOException("Cannot read the saved password.", e); }
     }
 
+    boolean canPreservePassword(Connection connection) {
+        return remembersPassword() && binding(connection).equals(preferences.get("passwordBinding", ""));
+    }
+
     /** A null password preserves an unreadable saved entry, only for its original connection. */
     void save(Connection connection, boolean rememberPassword, String password) throws IOException {
         boolean hadSecret = preferences.getBoolean("hasSavedPassword", false) || remembersPassword();
-        boolean preserve = password == null && rememberPassword && remembersPassword()
-                && binding(connection).equals(preferences.get("passwordBinding", ""));
+        boolean preserve = password == null && rememberPassword && canPreservePassword(connection);
         preferences.put("driverJars", connection.jars());
         preferences.put("driverClass", connection.driverClass());
         // Embedded credentials belong in Username/Password, never in ordinary preferences.
@@ -130,7 +141,7 @@ final class ConnectionSettingsStore {
         return hash(connection.driverClass() + "\0" + connection.url() + "\0" + connection.username());
     }
 
-    private static String hash(String value) {
+    static String hash(String value) {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); }
         catch (NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
     }

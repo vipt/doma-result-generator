@@ -42,22 +42,31 @@
       <ul>
         <li>ExplorerのSQLファイル、またはSQLエディター上で右クリックし、<strong>Generate Doma Result Class…</strong>から列名と型を取得してクラスを生成。SQLエディターでは未保存のテキストバッファーも使用。</li>
         <li>privateフィールドとpublicのgetter/setterを生成。アノテーション・プロパティの型をimportし、短い型名で出力。</li>
-        <li>JDBC接続設定と前回入力したPackageをプロジェクトごとに保持。パスワードは<strong>Save password in Eclipse Secure Storage</strong>で暗号化保存を選択。</li>
+        <li>接続プロファイルをワークスペース内で共有し、別プロジェクトでも選択して利用。前回の選択とPackageはプロジェクトごとに保持。パスワードの暗号化保存は任意。</li>
         <li><code>name.properties</code>の正規表現で、名前に一致するプロパティのJava型を指定。</li>
         <li><strong>Metadata SQL → SQL syntax</strong>でコメント・文字列のDB別の規則を選択。JDBC URLによる自動判別、<code>FOR UPDATE</code>付きSELECTにも対応。</li>
         <li>既存クラスは <strong>Preview → 差分比較 → Update</strong>で更新。手動メソッドやコメントを保持し、衝突がある場合は更新を停止。</li>
-        <li>接続待ちでも進捗ダイアログの<strong>Cancel</strong>でPreviewの待機を中止。<strong>Preview timeout (seconds)</strong>で待ち時間の上限を設定（初期値30秒、プロジェクトごとに保持）。遅れて返った結果は適用しません。</li>
+        <li>接続待ちでも進捗ダイアログの<strong>Cancel</strong>でPreviewの待機を中止。<strong>Preview timeout (seconds)</strong>で待ち時間の上限を設定（初期値30秒）。遅れて返った結果は適用しません。</li>
       </ul>
       <pre><code># name.properties
 .*Datetime$=java.time.LocalDateTime</code></pre>
       <p><code>CREATED_DATETIME</code>から生成する<code>createdDatetime</code>のようなJavaのプロパティ名に照合し、上から最初に一致したルールをJDBCの推定型より優先します。</p>
+
+      <h3 id="connection-profiles-ja">接続プロファイルの使い方</h3>
+      <ol>
+        <li>既存の設定があるプロジェクトで生成ダイアログを開きます。<strong>Connection profile → Unregistered (project settings)</strong>に従来の接続情報を表示します。</li>
+        <li><strong>Save as...</strong>を押し、「開発DB」などの名前で登録します。表示中の接続設定・タイムアウト・パスワード保存の選択を引き継ぎ、再入力は不要です。</li>
+        <li>別プロジェクトで<strong>Connection profile</strong>から登録名を選びます。接続設定が一括で入り、次回からそのプロジェクトの前回選択を復元します。</li>
+      </ol>
+      <p>共有設定の変更は<strong>Update profile</strong>、別の接続の登録は<strong>Save as...</strong>で確定します。ダイアログを閉じるだけでは共有設定を上書きしません。Package・Class name・出力先は共有しません。</p>
+      <p><strong>Manage...</strong>で名前変更・削除と<strong>Export all... / Import...</strong>ができます。エクスポートには接続URL・ユーザー名・JARパスを含み、パスワードは含めません。インポート後はパスワードとローカルのJARパスを確認してください。同名の設定は名前に連番を付けて追加します。</p>
 
       <h3 id="macos-password-ja">macOSでパスワードを保存できない場合</h3>
       <p>保存時に<code>Connection settings or the saved password could not be updated.</code>と表示される場合、キーチェーンから暗号化用のマスターパスワードを取得できていない可能性があります。入力画面が出ないまま失敗する場合もあります。Eclipseのログに<code>OSXProvider</code>のエラー（例：<code>Result: -25300</code>）がある場合は、次の手順を試してください。</p>
       <ol>
         <li>Eclipseの設定（通常<kbd>⌘,</kbd>）から<strong>General → Security → Secure Storage → Password</strong>を開きます。</li>
         <li><strong>Master password providers</strong>で<strong>OS X Keystore Integration</strong>のチェックを外し、<strong>UI Prompt</strong>を有効にして<strong>Apply and Close</strong>を押します。</li>
-        <li>生成ダイアログでDBのPasswordを再入力し、<strong>Save password in Eclipse Secure Storage</strong>をオンにして閉じます。<strong>Cancel</strong>でも保存します。</li>
+        <li>生成ダイアログでDBのPasswordを再入力し、<strong>Save password in Eclipse Secure Storage</strong>をオンにします。プロファイルでは<strong>Update profile</strong>で保存します。未登録設定ではダイアログを閉じると保存し、<strong>Cancel</strong>でも保存します。</li>
         <li>表示される画面で、Eclipseの保存情報を暗号化するためのマスターパスワードを設定または入力します。生成ダイアログを開き直して、Passwordが復元されることを確認します。</li>
       </ol>
       <p class="note"><strong>UI PromptでもSecure Storageへの暗号化保存を利用します。</strong>変更するのはマスターパスワードの取得方法です。設定はEclipse全体で新しく保存する情報に影響し、既存の保存情報は自動移行されません。<a href="https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-prefs.htm">Eclipse公式の設定説明</a>と<a href="https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-works.htm">動作の説明</a>も参照してください。</p>
@@ -86,15 +95,23 @@
         <li>Override property types with ordered, regex-based <code>name.properties</code> rules.</li>
         <li>Choose dialect-aware comment/string rules under <strong>Metadata SQL → SQL syntax</strong>, with automatic JDBC URL selection and support for locking SELECTs.</li>
         <li>Review existing-class changes before <strong>Update</strong>, retaining handwritten methods and comments. Conflicts stop the update.</li>
-        <li>Remember JDBC connection defaults and the last Package per project, with optional encrypted password storage in Eclipse Secure Storage.</li>
-        <li>Cancel the preview wait from its progress dialog even while connecting. Set <strong>Preview timeout (seconds)</strong> to limit the wait (default: 30 seconds, remembered per project). Late results are discarded.</li>
+        <li>Share named connection profiles across projects in one workspace. Remember each project's last profile and Package, with optional encrypted password storage in Eclipse Secure Storage.</li>
+        <li>Cancel the preview wait from its progress dialog even while connecting. Set <strong>Preview timeout (seconds)</strong> to limit the wait (default: 30 seconds). Late results are discarded.</li>
       </ul>
+      <h3 id="connection-profiles-en">Using connection profiles</h3>
+      <ol>
+        <li>Open the generator in a project with saved settings. <strong>Connection profile → Unregistered (project settings)</strong> shows its previous connection.</li>
+        <li>Select <strong>Save as...</strong> and name it, for example Development. The displayed connection settings, timeout and password-saving choice are retained without re-entry.</li>
+        <li>In another project, select that name under <strong>Connection profile</strong> to fill its connection settings. Each project restores its last selection on subsequent openings.</li>
+      </ol>
+      <p>Save shared edits with <strong>Update profile</strong>, or use <strong>Save as...</strong> for a separate connection. Closing the generator does not overwrite shared profiles. Package, class name and output location are not shared.</p>
+      <p><strong>Manage...</strong> offers rename, delete and <strong>Export all... / Import...</strong>. Exports include connection URLs, usernames and JAR paths, and exclude passwords. Re-enter passwords and check local JAR paths after importing. Name collisions receive a numbered suffix.</p>
       <h3 id="macos-password-en">macOS: password saving fails</h3>
       <p>If saving shows <code>Connection settings or the saved password could not be updated.</code>, Eclipse may be unable to retrieve its encryption master password from the macOS keychain. This can fail without a prompt. If the Eclipse log contains an <code>OSXProvider</code> error, such as <code>Result: -25300</code>, try these steps:</p>
       <ol>
         <li>Open Eclipse settings/preferences (usually <kbd>⌘,</kbd>), then <strong>General → Security → Secure Storage → Password</strong>.</li>
         <li>Under <strong>Master password providers</strong>, clear <strong>OS X Keystore Integration</strong>, enable <strong>UI Prompt</strong>, and select <strong>Apply and Close</strong>.</li>
-        <li>In the generator, re-enter the database Password, select <strong>Save password in Eclipse Secure Storage</strong>, and close the dialog. <strong>Cancel</strong> also saves these settings.</li>
+        <li>In the generator, re-enter the database Password and select <strong>Save password in Eclipse Secure Storage</strong>. Select <strong>Update profile</strong> for a profile. For unregistered settings, close the dialog; <strong>Cancel</strong> also saves them.</li>
         <li>In the prompt, create or enter the master password for encrypting Eclipse's saved information. Reopen the generator to confirm the database Password is restored.</li>
       </ol>
       <p class="note"><strong>UI Prompt still uses encrypted Eclipse Secure Storage.</strong> Only the way Eclipse obtains the master password changes. The setting affects newly saved information throughout Eclipse; existing entries are not migrated automatically. See the official <a href="https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-prefs.htm">preferences guide</a> and <a href="https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-works.htm">how Secure Storage works</a>.</p>
