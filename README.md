@@ -29,6 +29,14 @@ SQL extensions are case-insensitive in both the menu and default class name: `se
 
 Raw driver exceptions are not logged or displayed, since they may include connection details. Driver errors show the operation stage, SQLState, vendor error code and Oracle ORA number when available. **Error details...** shows these codes and phase-specific guidance; generator errors give actionable explanations. Use your normal trusted driver and database connection settings. Driver-specific timeout and SSL settings can be supplied in the JDBC URL according to the driver's documentation.
 
+### Canceling a preview and limiting the wait
+
+During **Preview**, select **Cancel** in the progress dialog to stop waiting and return to the generator, even when the JDBC driver has not returned from connecting. No Java files are changed. Adjust the settings and select Preview again.
+
+**Configuration → Preview timeout (seconds)** limits the entire preview, including connecting, reading metadata, generating the class and preparing an existing-class update. It defaults to **30 seconds**, accepts 1–600 seconds and is remembered per project, including when the generator is closed with Cancel. For Oracle drivers, the same duration also sets the connection and socket-read timeouts. Configure other drivers' own timeouts through their JDBC URL as documented by the vendor.
+
+Cancellation and timeout attempt to interrupt the work, cancel its statement and abort an acquired connection. A driver that ignores these requests may continue in the background; late results are discarded and connections are released when control returns. At most two unfinished previews are allowed. If both remain stuck, another Preview reports that the earlier attempts must finish first.
+
 ### macOS: password saving fails
 
 If saving shows `Connection settings or the saved password could not be updated.`, Eclipse may be unable to retrieve the Secure Storage master password from the macOS keychain. This can fail without displaying a password prompt or keychain permission dialog. If the Eclipse log contains an `OSXProvider` error, such as `Could not obtain password. Result: -25300`, try switching to **UI Prompt**:

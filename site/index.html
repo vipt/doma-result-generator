@@ -46,6 +46,7 @@
         <li><code>name.properties</code>の正規表現で、名前に一致するプロパティのJava型を指定。</li>
         <li><strong>Metadata SQL → SQL syntax</strong>でコメント・文字列のDB別の規則を選択。JDBC URLによる自動判別、<code>FOR UPDATE</code>付きSELECTにも対応。</li>
         <li>既存クラスは <strong>Preview → 差分比較 → Update</strong>で更新。手動メソッドやコメントを保持し、衝突がある場合は更新を停止。</li>
+        <li>接続待ちでも進捗ダイアログの<strong>Cancel</strong>でPreviewの待機を中止。<strong>Preview timeout (seconds)</strong>で待ち時間の上限を設定（初期値30秒、プロジェクトごとに保持）。遅れて返った結果は適用しません。</li>
       </ul>
       <pre><code># name.properties
 .*Datetime$=java.time.LocalDateTime</code></pre>
@@ -86,6 +87,7 @@
         <li>Choose dialect-aware comment/string rules under <strong>Metadata SQL → SQL syntax</strong>, with automatic JDBC URL selection and support for locking SELECTs.</li>
         <li>Review existing-class changes before <strong>Update</strong>, retaining handwritten methods and comments. Conflicts stop the update.</li>
         <li>Remember JDBC connection defaults and the last Package per project, with optional encrypted password storage in Eclipse Secure Storage.</li>
+        <li>Cancel the preview wait from its progress dialog even while connecting. Set <strong>Preview timeout (seconds)</strong> to limit the wait (default: 30 seconds, remembered per project). Late results are discarded.</li>
       </ul>
       <h3 id="macos-password-en">macOS: password saving fails</h3>
       <p>If saving shows <code>Connection settings or the saved password could not be updated.</code>, Eclipse may be unable to retrieve its encryption master password from the macOS keychain. This can fail without a prompt. If the Eclipse log contains an <code>OSXProvider</code> error, such as <code>Result: -25300</code>, try these steps:</p>

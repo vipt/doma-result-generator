@@ -79,6 +79,17 @@ public class ConnectionSettingsStoreTest {
         assertEquals("example.report", store.loadPackageName());
     }
 
+    @Test public void previewTimeoutDefaultsToThirtySecondsAndIsRememberedPerProject() throws Exception {
+        assertEquals(30, store.loadPreviewTimeout());
+        store.savePreviewTimeout(75);
+        assertEquals(75, new ConnectionSettingsStore(preferences, () -> secure, "test/workspace/project").loadPreviewTimeout());
+        var other = new ConnectionSettingsStore(preferences.node("other"), () -> secure, "test/workspace/other");
+        assertEquals(30, other.loadPreviewTimeout());
+        preferences.putInt("previewTimeoutSeconds", -1);
+        assertEquals(30, store.loadPreviewTimeout());
+        assertThrows(IllegalArgumentException.class, () -> store.savePreviewTimeout(0));
+    }
+
     @Test public void optInStoresEncryptedPasswordAndRestoresItForTheSameConnection() throws Exception {
         store.save(connection, true, PASSWORD);
         assertTrue(store.remembersPassword());

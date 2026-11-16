@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 package io.github.domaresult.ui;
 
+import io.github.domaresult.core.PreviewExecution;
 import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -51,6 +52,17 @@ final class ConnectionSettingsStore {
 
     void savePackageName(String value) throws IOException {
         preferences.put("packageName", value);
+        flush();
+    }
+
+    int loadPreviewTimeout() {
+        int value = preferences.getInt("previewTimeoutSeconds", PreviewExecution.DEFAULT_TIMEOUT_SECONDS);
+        return value >= 1 && value <= PreviewExecution.MAX_TIMEOUT_SECONDS ? value : PreviewExecution.DEFAULT_TIMEOUT_SECONDS;
+    }
+
+    void savePreviewTimeout(int seconds) throws IOException {
+        if (seconds < 1 || seconds > PreviewExecution.MAX_TIMEOUT_SECONDS) throw new IllegalArgumentException("Invalid preview timeout.");
+        preferences.putInt("previewTimeoutSeconds", seconds);
         flush();
     }
 

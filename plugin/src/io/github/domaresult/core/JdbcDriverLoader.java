@@ -12,6 +12,7 @@ import java.sql.Driver;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 
 public final class JdbcDriverLoader extends URLClassLoader {
     private boolean closed;
@@ -30,13 +31,27 @@ public final class JdbcDriverLoader extends URLClassLoader {
     }
 
     public Connection connect(String driverClass, String url, String user, String password) throws Exception {
+        return connect(driverClass, url, user, password, 0);
+    }
+
+    public Connection connect(String driverClass, String url, String user, String password, int timeoutSeconds) throws Exception {
         Driver driver = Class.forName(driverClass, true, this).asSubclass(Driver.class).getConstructor().newInstance();
-        Properties properties = new Properties();
-        if (!user.isEmpty()) properties.setProperty("user", user);
-        if (!password.isEmpty()) properties.setProperty("password", password);
+        Properties properties = connectionProperties(driverClass, user, password, timeoutSeconds);
         Connection connection = driver.connect(url, properties);
         if (connection == null) throw new SQLException("The selected driver does not accept this JDBC URL.");
         return connection;
+    }
+
+    static Properties connectionProperties(String driverClass, String user, String password, int timeoutSeconds) {
+        Properties properties = new Properties();
+        if (!user.isEmpty()) properties.setProperty("user", user);
+        if (!password.isEmpty()) properties.setProperty("password", password);
+        if (timeoutSeconds > 0 && driverClass.startsWith("oracle.")) {
+            String milliseconds = Long.toString(TimeUnit.SECONDS.toMillis(timeoutSeconds));
+            properties.setProperty("oracle.net.CONNECT_TIMEOUT", milliseconds);
+            properties.setProperty("oracle.jdbc.ReadTimeout", milliseconds);
+        }
+        return properties;
     }
 
     @Override

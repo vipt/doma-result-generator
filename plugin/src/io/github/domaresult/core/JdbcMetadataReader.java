@@ -28,17 +28,28 @@ public final class JdbcMetadataReader {
 
     public List<ResultColumn> read(Connection connection, String sql, String qualifiedClassName,
             TypeNameMappings mappings, Consumer<JdbcErrorDetails.Stage> progress, SqlInput.Dialect dialect) throws SQLException {
+        return read(connection, sql, qualifiedClassName, mappings, progress, dialect, new PreviewExecution.Cancellation());
+    }
+
+    public List<ResultColumn> read(Connection connection, String sql, String qualifiedClassName,
+            TypeNameMappings mappings, Consumer<JdbcErrorDetails.Stage> progress, SqlInput.Dialect dialect,
+            PreviewExecution.Cancellation cancellation) throws SQLException {
+        cancellation.check();
         String prepared = SqlInput.validate(sql, dialect);
         progress.accept(JdbcErrorDetails.Stage.PREPARING_SQL);
-        try (PreparedStatement statement = connection.prepareStatement(prepared)) {
+        PreparedStatement statement = connection.prepareStatement(prepared);
+        try (statement) {
+            cancellation.track(statement);
             progress.accept(JdbcErrorDetails.Stage.READING_COLUMNS);
             ResultSetMetaData metadata = statement.getMetaData();
+            cancellation.check();
             if (metadata == null) {
                 throw new MetadataException("This driver cannot describe a SELECT before execution. "
                         + "Try a newer JDBC driver; query execution fallback is not supported.");
             }
             List<String> labels = new ArrayList<>();
             for (int i = 1; i <= metadata.getColumnCount(); i++) {
+                cancellation.check();
                 String label = metadata.getColumnLabel(i);
                 if (label == null || label.isBlank()) label = metadata.getColumnName(i);
                 labels.add(label);
@@ -46,6 +57,7 @@ public final class JdbcMetadataReader {
             List<String> fields = JavaNames.fieldNames(labels);
             List<ResultColumn> columns = new ArrayList<>();
             for (int i = 1; i <= labels.size(); i++) {
+                cancellation.check();
                 String label = labels.get(i - 1);
                 var override = mappings.resolve(qualifiedClassName, fields.get(i - 1));
                 String type = override.isPresent() ? override.get()
@@ -54,7 +66,7 @@ public final class JdbcMetadataReader {
             }
             progress.accept(JdbcErrorDetails.Stage.CLOSING_STATEMENT);
             return List.copyOf(columns);
-        }
+        } finally { cancellation.release(statement); }
     }
 
     private static String javaType(int jdbcType, String label, String databaseType) throws SQLException {

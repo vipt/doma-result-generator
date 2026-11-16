@@ -7,6 +7,7 @@ import io.github.domaresult.core.JdbcDriverLoader;
 import io.github.domaresult.core.JdbcErrorDetails;
 import io.github.domaresult.core.JdbcMetadataReader;
 import io.github.domaresult.core.MetadataException;
+import io.github.domaresult.core.PreviewExecution;
 import io.github.domaresult.core.SqlInput;
 import io.github.domaresult.core.SourceUpdatePlan;
 import io.github.domaresult.core.TypeNameMappings;
@@ -15,14 +16,19 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import org.eclipse.compare.CompareUI;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.core.runtime.OperationCanceledException;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
 import org.eclipse.jface.dialogs.IDialogConstants;
@@ -43,6 +49,7 @@ import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.FileDialog;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Shell;
+import org.eclipse.swt.widgets.Spinner;
 import org.eclipse.swt.widgets.TabFolder;
 import org.eclipse.swt.widgets.TabItem;
 import org.eclipse.swt.widgets.Text;
@@ -60,6 +67,7 @@ final class GenerateDialog extends TitleAreaDialog {
     private final ConnectionSettingsStore connectionSettings;
     private Text jars, driverClass, jdbcUrl, user, password, packageName, className, typeMappingsFile;
     private Button savePassword;
+    private Spinner previewTimeout;
     private boolean passwordReadFailed;
     private Combo sourceFolder;
     private Combo sqlSyntax;
@@ -72,6 +80,7 @@ final class GenerateDialog extends TitleAreaDialog {
     private ICompilationUnit previewTarget;
     private SourceUpdatePlan updatePlan;
     private final WorkspaceClassUpdater updater = new WorkspaceClassUpdater();
+    private record PreviewResult(String source, List<String> notes) {}
 
     GenerateDialog(Shell parent, IWorkbenchWindow window, IFile file,
             List<IPackageFragmentRoot> roots, String initialSql) {
@@ -107,6 +116,12 @@ final class GenerateDialog extends TitleAreaDialog {
         note(config, "Multiple driver/dependency JARs: separate paths with semicolons.");
         driverClass = fullField(config, "Driver class", saved.driverClass(), false);
         jdbcUrl = fullField(config, "JDBC URL", saved.url(), false);
+        new Label(config, SWT.NONE).setText("Preview timeout (seconds)");
+        previewTimeout = new Spinner(config, SWT.BORDER);
+        previewTimeout.setMinimum(1);
+        previewTimeout.setMaximum(PreviewExecution.MAX_TIMEOUT_SECONDS);
+        previewTimeout.setSelection(connectionSettings.loadPreviewTimeout());
+        previewTimeout.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
         user = fullField(config, "Username", saved.username(), false);
         password = fullField(config, "Password", "", true);
         savePassword = new Button(config, SWT.CHECK);
@@ -157,6 +172,7 @@ final class GenerateDialog extends TitleAreaDialog {
         for (Text input : List.of(jars, driverClass, jdbcUrl, user, password, packageName, className, typeMappingsFile)) input.addModifyListener(invalidate);
         sql.addModifyListener(invalidate);
         sourceFolder.addModifyListener(invalidate);
+        previewTimeout.addModifyListener(invalidate);
         sqlSyntax.addModifyListener(invalidate);
         ModifyListener clearPassword = e -> {
             passwordReadFailed = false;
@@ -232,6 +248,7 @@ final class GenerateDialog extends TitleAreaDialog {
 
     private void loadPreview() {
         invalidatePreview();
+        int timeoutSeconds = previewTimeout.getSelection();
         AtomicReference<JdbcErrorDetails.Stage> stage = new AtomicReference<>(JdbcErrorDetails.Stage.LOADING_DRIVER);
         try {
             String pkg = packageName.getText().trim();
@@ -261,43 +278,61 @@ final class GenerateDialog extends TitleAreaDialog {
             String username = user.getText();
             String secret = password.getText();
             Path mappingPath = typeMappingsFile.getText().isBlank() ? null : Path.of(typeMappingsFile.getText().trim());
-            AtomicReference<String> result = new AtomicReference<>();
-            AtomicReference<List<String>> notes = new AtomicReference<>(List.of());
-            new ProgressMonitorDialog(getShell()).run(true, false, monitor -> {
+            AtomicReference<PreviewResult> result = new AtomicReference<>();
+            WorkspaceClassUpdater classUpdater = updater;
+            ProgressMonitorDialog progress = new ProgressMonitorDialog(getShell());
+            progress.run(true, true, monitor -> {
                 monitor.beginTask("Reading SELECT column metadata...", -1);
                 try {
-                    TypeNameMappings mappings;
-                    try {
-                        mappings = mappingPath == null ? TypeNameMappings.empty() : TypeNameMappings.read(mappingPath);
-                    } catch (IOException e) {
-                        throw new GenerationException("Cannot read the type mappings file. Check its path, permissions and UTF-8 encoding.");
-                    }
-                    try (JdbcDriverLoader loader = new JdbcDriverLoader(paths)) {
-                        Thread thread = Thread.currentThread();
-                        ClassLoader previous = thread.getContextClassLoader();
+                    result.set(PreviewExecution.DEFAULT.run(cancellation -> {
+                        cancellation.check();
+                        var backgroundMonitor = cancellationMonitor(cancellation);
+                        TypeNameMappings mappings;
                         try {
-                            thread.setContextClassLoader(loader);
-                            stage.set(JdbcErrorDetails.Stage.CONNECTING);
-                            try (var connection = loader.connect(driver, url, username, secret)) {
-                                var columns = new JdbcMetadataReader().read(connection, query, pkg + "." + name, mappings, stage::set, selectedDialect);
-                                stage.set(JdbcErrorDetails.Stage.GENERATING_CLASS);
-                                String fresh = updater.generate(target, pkg, name, columns);
-                                result.set(fresh);
-                                stage.set(JdbcErrorDetails.Stage.CLOSING_CONNECTION);
-                            }
-                        } finally { thread.setContextClassLoader(previous); }
-                        stage.set(JdbcErrorDetails.Stage.CLOSING_DRIVER);
-                    }
-                    if (existing) {
-                        var merged = updater.preview(target, before, result.get(), monitor, stage::set);
-                        result.set(merged.source());
-                        notes.set(merged.notes());
-                    }
+                            mappings = mappingPath == null ? TypeNameMappings.empty() : TypeNameMappings.read(mappingPath);
+                        } catch (IOException e) {
+                            throw new GenerationException("Cannot read the type mappings file. Check its path, permissions and UTF-8 encoding.");
+                        }
+                        String fresh;
+                        try (JdbcDriverLoader loader = new JdbcDriverLoader(paths)) {
+                            cancellation.driverLoader(loader);
+                            Thread thread = Thread.currentThread();
+                            ClassLoader previous = thread.getContextClassLoader();
+                            try {
+                                thread.setContextClassLoader(loader);
+                                cancellation.check();
+                                stage.set(JdbcErrorDetails.Stage.CONNECTING);
+                                var connection = loader.connect(driver, url, username, secret, timeoutSeconds);
+                                try (connection) {
+                                    cancellation.track(connection);
+                                    var columns = new JdbcMetadataReader().read(connection, query, pkg + "." + name, mappings, stage::set, selectedDialect, cancellation);
+                                    cancellation.check();
+                                    stage.set(JdbcErrorDetails.Stage.GENERATING_CLASS);
+                                    fresh = classUpdater.generate(target, pkg, name, columns);
+                                    stage.set(JdbcErrorDetails.Stage.CLOSING_CONNECTION);
+                                } finally { cancellation.release(connection); }
+                            } finally { thread.setContextClassLoader(previous); }
+                            stage.set(JdbcErrorDetails.Stage.CLOSING_DRIVER);
+                        }
+                        cancellation.check();
+                        if (existing) {
+                            var merged = classUpdater.preview(target, before, fresh, backgroundMonitor, stage::set);
+                            cancellation.check();
+                            return new PreviewResult(merged.source(), merged.notes());
+                        }
+                        return new PreviewResult(fresh, List.of());
+                    }, monitor::isCanceled, Duration.ofSeconds(timeoutSeconds)));
+                } catch (ExecutionException e) {
+                    throw new InvocationTargetException(e.getCause());
                 } catch (Exception | LinkageError e) {
                     throw new InvocationTargetException(e);
                 } finally { monitor.done(); }
             });
-            generated = result.get();
+            if (progress.getProgressMonitor().isCanceled()) {
+                setMessage("Preview canceled. Adjust settings and select Preview again.");
+                return;
+            }
+            generated = result.get().source();
             previewTarget = target;
             updatePlan = existing ? new SourceUpdatePlan(before, generated, stamp) : null;
             preview.setText(generated);
@@ -306,7 +341,7 @@ final class GenerateDialog extends TitleAreaDialog {
             boolean changes = !existing || updatePlan.hasChanges();
             getButton(COMPARE).setEnabled(existing && changes);
             if (existing && changes) {
-                setMessage((notes.get().isEmpty() ? "" : String.join(" ", notes.get()) + " ")
+                setMessage((result.get().notes().isEmpty() ? "" : String.join(" ", result.get().notes()) + " ")
                         + "Review the comparison, then select Update. Custom members and comments are retained.");
                 showChanges();
             } else {
@@ -316,22 +351,33 @@ final class GenerateDialog extends TitleAreaDialog {
             }
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause();
+            if (cause instanceof CancellationException || cause instanceof OperationCanceledException) {
+                setMessage("Preview canceled. Adjust settings and select Preview again.");
+                return;
+            }
             // Driver messages may include connection credentials: show no raw driver text.
             if (cause instanceof GenerationException || cause instanceof MetadataException) setErrorMessage(cause.getMessage());
             else {
                 JdbcErrorDetails.Info info = JdbcErrorDetails.describe(cause, stage.get(), driverClass.getText().trim().startsWith("oracle."));
                 lastJdbcError = info.details();
-                setErrorMessage(info.summary());
+                setErrorMessage(cause instanceof TimeoutException ? "Preview timed out after " + timeoutSeconds
+                        + " seconds. Check connection settings or increase Preview timeout. See Error details." : info.summary());
                 getButton(ERROR_DETAILS).setEnabled(true);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            setErrorMessage("Metadata lookup interrupted.");
+            setErrorMessage("Preview interrupted.");
         } catch (IllegalArgumentException e) {
             setErrorMessage(e.getMessage());
         } catch (CoreException e) {
             setErrorMessage("Cannot read the target Java class. Check its saved state, encoding and permissions.");
         }
+    }
+
+    private static NullProgressMonitor cancellationMonitor(PreviewExecution.Cancellation cancellation) {
+        return new NullProgressMonitor() {
+            @Override public boolean isCanceled() { return cancellation.isCanceled() || super.isCanceled(); }
+        };
     }
 
     private void showChanges() {
@@ -380,6 +426,7 @@ final class GenerateDialog extends TitleAreaDialog {
     public boolean close() {
         if (password != null && !password.isDisposed()) {
             try {
+                connectionSettings.savePreviewTimeout(previewTimeout.getSelection());
                 connectionSettings.savePackageName(packageName.getText());
                 connectionSettings.save(new ConnectionSettingsStore.Connection(jars.getText(), driverClass.getText().trim(),
                         jdbcUrl.getText().trim(), user.getText()), savePassword.getSelection(),
