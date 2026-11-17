@@ -173,7 +173,7 @@ final class GenerateDialog extends TitleAreaDialog {
                 "MySQL: NO_BACKSLASH_ESCAPES", "PostgreSQL: legacy backslash strings", "SQL Server" });
         sqlSyntax.select(0);
         sqlSyntax.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-        note(sqlPage, "Simple %expand directives are converted to * or alias.* on Preview. Bind test literals can remain. Replace conditions/loops with concrete SQL. The original file is unchanged.");
+        note(sqlPage, "Nested %if/%end filters inside WHERE/HAVING and bind test literals can remain. All filter bodies are used without evaluating conditions. Simple %expand is converted on Preview. Replace projection conditions, else branches and loops with concrete SQL. The original file is unchanged.");
         sql = new StyledText(sqlPage, SWT.BORDER | SWT.MULTI | SWT.H_SCROLL | SWT.V_SCROLL);
         sql.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
         sql.setText(initialSql);

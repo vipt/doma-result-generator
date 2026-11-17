@@ -143,7 +143,28 @@ select /*%expand "e" */* from employee e
 
 On **Preview**, **Metadata SQL** displays the prepared SELECT. The saved SQL file remains unchanged. Bind comments and test values, including `IN /* ids */(0)`, can remain. A literal alias can use a quoted SQL identifier; arbitrary alias expressions are not evaluated. The database describes `*` or `alias.*`, so metadata generation includes that table's database columns rather than deriving a projection from an existing Doma entity definition.
 
-This version does not evaluate `/*%if*/`, `/*%for*/`, embedded variables (`/*# ... */`) or literal variables (`/*^ ... */`). Replace those with a concrete SELECT in **Metadata SQL**. If a condition changes the projected columns, select the intended projection explicitly.
+### Doma conditions in query filters
+
+Nested `/*%if condition */ ... /*%end*/` filters inside an existing WHERE or HAVING clause can remain unchanged. No edits to the SQL file or Metadata SQL are needed.
+
+```sql
+SELECT e.id, e.name
+FROM employee e
+WHERE 1=1
+/*%if @isNotBlank(condition.name) */
+  AND e.name = /* condition.name */'sample'
+/*%end*/
+/*%if condition.first || condition.second */
+  AND e.status IN (''
+    /*%if condition.first */ ,'A' /*%end*/
+    /*%if condition.second */ ,'B' /*%end*/
+  )
+/*%end*/
+```
+
+Conditions and application Java code are not evaluated. The database describes the SQL with all filter bodies and test literals included; directive comments are retained. No result rows are fetched. Filters inside subqueries, CTEs and UNION branches are supported, provided the test SQL is a valid ordinary SELECT.
+
+Conditions that change SELECT columns or FROM clauses, add/remove a WHERE or HAVING clause itself, `%else`, `%elseif`, `%for`, embedded variables (`/*# ... */`) and literal variables (`/*^ ... */`) still require a concrete SELECT in **Metadata SQL**. Each `%if`/`%end` pair must stay inside the same filter clause, query and parenthesis scope. Unsupported conditions and unmatched tags report a line number.
 
 **Metadata SQL → SQL syntax** defaults to automatic selection from the JDBC URL: PostgreSQL, MySQL/MariaDB, SQL Server, or generic non-nested comments for Oracle and other URLs. PostgreSQL/SQL Server support nested comments; MySQL supports backslash string escapes. Select the corresponding override for MySQL `NO_BACKSLASH_ESCAPES` or PostgreSQL legacy backslash strings. Automatic selection does not query the database's session mode.
 

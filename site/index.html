@@ -45,6 +45,7 @@
         <li>接続プロファイルをワークスペース内で共有し、別プロジェクトでも選択して利用。前回の選択とPackageはプロジェクトごとに保持。パスワードの暗号化保存は任意。</li>
         <li><code>name.properties</code>の正規表現で、名前に一致するプロパティのJava型を指定。</li>
         <li><strong>Metadata SQL → SQL syntax</strong>でコメント・文字列のDB別の規則を選択。JDBC URLによる自動判別、<code>FOR UPDATE</code>付きSELECTにも対応。</li>
+        <li>WHERE／HAVING内の入れ子の<code>/*%if ...*/</code>・<code>/*%end*/</code>はSQLを書き換えずに利用。すべての検索条件本文とテスト値を使い、列情報を取得します。</li>
         <li>既存クラスは <strong>Preview → 差分比較 → Update</strong>で更新。手動メソッドやコメントを保持し、衝突がある場合は更新を停止。</li>
         <li>接続待ちでも進捗ダイアログの<strong>Cancel</strong>でPreviewの待機を中止。<strong>Preview timeout (seconds)</strong>で待ち時間の上限を設定（初期値30秒）。遅れて返った結果は適用しません。</li>
       </ul>
@@ -73,7 +74,7 @@
 
       <h3>対応環境と現在の範囲</h3>
       <p><strong>Eclipse 2023-12 / 4.30以降、Java 17以上</strong>を対象にしています。Java開発機能（JDT）、対象プロジェクトのDoma 2設定、JDBCドライバーを用意してください。</p>
-      <p class="note">初期プレビュー版です。H2とDoma 2.57.0で生成・更新処理をテストしています。他DBはJDBCドライバーの実行前メタデータ取得に依存します。単純な<code>/*%expand*/</code>は自動変換し、条件分岐・ループなどは<strong>Metadata SQL</strong>で具体的なSELECTに置き換えます。DBエラーは<strong>Error details...</strong>でORA番号・失敗段階を確認できます。旧版クラスの生成元が不明なフィールドは削除せず残します。比較画面の手動操作と、各DBでの検証は今後の確認項目です。</p>
+      <p class="note">初期プレビュー版です。H2とDoma 2.57.0で生成・更新処理をテストしています。他DBはJDBCドライバーの実行前メタデータ取得に依存します。検索条件内の<code>%if/%end</code>は条件式を評価せずテストSQLとして扱い、単純な<code>/*%expand*/</code>は自動変換します。取得列や句を切り替える分岐、<code>%else/%elseif</code>・ループなどは<strong>Metadata SQL</strong>で具体的なSELECTに置き換えます。DBエラーは<strong>Error details...</strong>でORA番号・失敗段階を確認できます。旧版クラスの生成元が不明なフィールドは削除せず残します。比較画面の手動操作と、各DBでの検証は今後の確認項目です。</p>
       <p class="links"><a href="https://github.com/vipt/doma-result-generator/blob/main/README.ja.md">詳しい使い方</a><a href="https://github.com/vipt/doma-result-generator">ソースコード</a><a href="https://github.com/vipt/doma-result-generator/issues">不具合・要望</a></p>
     </section>
 
@@ -94,6 +95,7 @@
         <li>Generate private fields and public getters/setters, using imports and short annotation/property type names.</li>
         <li>Override property types with ordered, regex-based <code>name.properties</code> rules.</li>
         <li>Choose dialect-aware comment/string rules under <strong>Metadata SQL → SQL syntax</strong>, with automatic JDBC URL selection and support for locking SELECTs.</li>
+        <li>Use nested <code>/*%if ...*/</code>/<code>/*%end*/</code> filters in WHERE/HAVING without editing SQL. Column metadata uses all filter bodies and test literals.</li>
         <li>Review existing-class changes before <strong>Update</strong>, retaining handwritten methods and comments. Conflicts stop the update.</li>
         <li>Share named connection profiles across projects in one workspace. Remember each project's last profile and Package, with optional encrypted password storage in Eclipse Secure Storage.</li>
         <li>Cancel the preview wait from its progress dialog even while connecting. Set <strong>Preview timeout (seconds)</strong> to limit the wait (default: 30 seconds). Late results are discarded.</li>
@@ -116,7 +118,7 @@
       </ol>
       <p class="note"><strong>UI Prompt still uses encrypted Eclipse Secure Storage.</strong> Only the way Eclipse obtains the master password changes. The setting affects newly saved information throughout Eclipse; existing entries are not migrated automatically. See the official <a href="https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-prefs.htm">preferences guide</a> and <a href="https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-works.htm">how Secure Storage works</a>.</p>
       <p>Requires Eclipse Java IDE <strong>2023-12 / 4.30+</strong>, <strong>Java 17+</strong>, a Doma 2 project and a JDBC driver.</p>
-      <p class="note">Initial preview. Core generation and update tests use H2 and Doma 2.57.0. Other databases depend on pre-execution JDBC metadata support. Simple <code>/*%expand*/</code> directives are prepared automatically; replace conditions and loops with a concrete SELECT in Metadata SQL. <strong>Error details...</strong> reports Oracle numbers and failure stages. Uncertain unmarked legacy fields are retained. Manual comparison-dialog checks and database-specific validation remain open.</p>
+      <p class="note">Initial preview. Core generation and update tests use H2 and Doma 2.57.0. Other databases depend on pre-execution JDBC metadata support. Filter-only <code>%if/%end</code> uses test SQL without evaluating expressions; simple <code>/*%expand*/</code> is prepared automatically. Replace projection/clause changes, <code>%else/%elseif</code> branches and loops with a concrete SELECT in Metadata SQL. <strong>Error details...</strong> reports Oracle numbers and failure stages. Uncertain unmarked legacy fields are retained. Manual comparison-dialog checks and database-specific validation remain open.</p>
       <p class="links"><a href="https://github.com/vipt/doma-result-generator/blob/main/README.md">Documentation</a><a href="https://github.com/vipt/doma-result-generator">Source</a><a href="https://github.com/vipt/doma-result-generator/issues">Issues</a></p>
     </section>
   </main>

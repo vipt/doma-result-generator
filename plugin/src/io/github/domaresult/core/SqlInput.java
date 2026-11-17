@@ -8,7 +8,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Prepares metadata SELECTs, including literal expansion directives, without evaluating expressions. */
+/** Prepares metadata SELECTs and accepts filter-only conditions without evaluating expressions. */
 public final class SqlInput {
     public enum Dialect {
         STANDARD(false, false, false), POSTGRESQL(true, false, true), MYSQL(false, true, false),
@@ -45,6 +45,7 @@ public final class SqlInput {
         if (sql == null || sql.isBlank()) throw new GenerationException("Enter a SELECT statement.");
         List<String> words = new ArrayList<>();
         List<Replacement> replacements = new ArrayList<>();
+        SqlConditionContext conditions = new SqlConditionContext(sql);
         int terminal = -1;
         for (int i = 0; i < sql.length();) {
             char c = sql.charAt(i);
@@ -75,14 +76,17 @@ public final class SqlInput {
                     }
                     replacements.add(new Replacement(start, star + 1, expansion(comment.substring(7).strip())));
                     i = star + 1;
-                } else if (comment.startsWith("%") || comment.startsWith("#") || comment.startsWith("^")) {
-                    throw new GenerationException("Replace conditional, loop or embedded Doma directives with a concrete SELECT in Metadata SQL. "
-                            + "Simple %expand directives and bind comments with test literals (/* id */0) are supported.");
+                } else if (comment.startsWith("%")) {
+                    if (terminal >= 0) throw new GenerationException("Only one SELECT statement is allowed.");
+                    conditions.directive(comment, start);
+                } else if (comment.startsWith("#") || comment.startsWith("^")) {
+                    throw new GenerationException("Replace embedded or literal Doma directives with a concrete SELECT in Metadata SQL. "
+                            + "Filter-only %if/%end conditions and bind comments with test literals (/* id */0) are supported.");
                 }
                 continue;
             }
             if (terminal >= 0) throw new GenerationException("Only one SELECT statement is allowed.");
-            if (c == ';') { terminal = i++; continue; }
+            if (c == ';') { conditions.symbol(c, i); terminal = i++; continue; }
             if (c == '?') throw new GenerationException("Replace JDBC parameters (?) with typed test literals.");
             if (c == '\'' || c == '"' || c == '`' || c == '[') {
                 char close = c == '[' ? ']' : c;
@@ -99,6 +103,7 @@ public final class SqlInput {
                     }
                 }
                 if (!closed) throw new GenerationException("Unclosed SQL string or quoted identifier.");
+                conditions.atom();
                 continue;
             }
             if (c == '$') {
@@ -107,7 +112,7 @@ public final class SqlInput {
                     String delimiter = matcher.group();
                     int end = sql.indexOf(delimiter, matcher.end());
                     if (end < 0) throw new GenerationException("Unclosed dollar-quoted string.");
-                    i = end + delimiter.length(); continue;
+                    i = end + delimiter.length(); conditions.atom(); continue;
                 }
             }
             if (Character.isLetter(c) || c == '_') {
@@ -118,9 +123,11 @@ public final class SqlInput {
                 boolean locking = word.equals("UPDATE") && !words.isEmpty() && (words.get(words.size() - 1).equals("FOR")
                         || words.size() >= 3 && words.subList(words.size() - 3, words.size()).equals(List.of("FOR", "NO", "KEY")));
                 if (WRITES.contains(word) && !locking) throw new GenerationException("Use a SELECT without data modification: " + word);
+                conditions.word(word, begin);
                 words.add(word);
-            } else i++;
+            } else { conditions.symbol(c, i); i++; }
         }
+        conditions.finish();
         if (words.isEmpty() || !(words.get(0).equals("SELECT") || words.get(0).equals("WITH"))
                 || !words.contains("SELECT")) {
             throw new GenerationException("Enter a SELECT or a WITH ... SELECT statement.");

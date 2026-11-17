@@ -103,7 +103,28 @@ select /*%expand "e" */* from employee e
 
 変換結果は**Metadata SQL**タブで確認できます。元のSQLファイルは変更しません。別名は文字列リテラルに対応し、SQLの引用識別子も指定できます。動的な別名の式は評価しません。この変換ではDBの`*`または`alias.*`から列情報を取得するため、既存のDomaエンティティの定義にある項目だけを展開する処理とは列構成が異なる場合があります。
 
-`/*%if*/`・`/*%for*/`・埋め込み変数などは、**Metadata SQL**内で具体的なSELECTに置き換えてください。
+### 検索条件のDoma条件分岐
+
+既存のWHERE／HAVING句内にある`/*%if 条件 */ ... /*%end*/`は、入れ子を含めてそのまま利用できます。SQLファイルやMetadata SQLを手動で書き換える必要はありません。
+
+```sql
+SELECT e.id, e.name
+FROM employee e
+WHERE 1=1
+/*%if @isNotBlank(condition.name) */
+  AND e.name = /* condition.name */'sample'
+/*%end*/
+/*%if condition.first || condition.second */
+  AND e.status IN (''
+    /*%if condition.first */ ,'A' /*%end*/
+    /*%if condition.second */ ,'B' /*%end*/
+  )
+/*%end*/
+```
+
+条件式やアプリケーションのJavaコードは評価せず、すべての条件本文とテスト値を含むSQLとして列情報を取得します。条件コメント自体も保持します。結果行の取得は行いません。サブクエリ・CTE・UNION内の検索条件にも対応しますが、SQL自体がテスト値を使った通常のSELECTとして有効である必要があります。
+
+取得列やFROMなどを切り替える分岐、WHERE／HAVING句自体を追加・削除する分岐、`%else`・`%elseif`・`%for`・埋め込み変数・リテラル変数は自動処理しません。これらは**Metadata SQL**内で具体的なSELECTに置き換えてください。`%if`と`%end`は同じ検索句・クエリ・括弧の範囲内で対応させます。未対応の分岐や対応しないタグは行番号付きで案内します。
 
 **Metadata SQL → SQL syntax**は、初期状態ではJDBC URLからPostgreSQL・MySQL/MariaDB・SQL Serverを判別し、その他はOracleなど向けの非ネストコメントとして解析します。PostgreSQL・SQL Serverではネストコメント、MySQLではバックスラッシュの文字列エスケープに対応します。MySQLの`NO_BACKSLASH_ESCAPES`やPostgreSQLの従来の文字列エスケープ設定を使う場合は、対応する選択肢に切り替えてください。自動選択はDBセッションのモードを問い合わせるものではありません。
 
