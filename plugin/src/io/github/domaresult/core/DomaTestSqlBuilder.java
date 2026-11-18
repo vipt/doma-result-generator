@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import javax.sql.DataSource;
 import org.seasar.doma.DomaException;
@@ -14,6 +15,7 @@ import org.seasar.doma.internal.expr.node.EmptyNode;
 import org.seasar.doma.internal.jdbc.sql.NodePreparedSqlBuilder;
 import org.seasar.doma.internal.jdbc.sql.SqlParser;
 import org.seasar.doma.internal.jdbc.sql.node.BindVariableNode;
+import org.seasar.doma.internal.jdbc.sql.node.EmbeddedVariableNode;
 import org.seasar.doma.internal.jdbc.sql.node.IfBlockNode;
 import org.seasar.doma.internal.jdbc.sql.node.ForBlockNode;
 import org.seasar.doma.internal.jdbc.sql.node.ClauseNode;
@@ -26,6 +28,7 @@ import org.seasar.doma.jdbc.JdbcException;
 import org.seasar.doma.jdbc.Config;
 import org.seasar.doma.jdbc.SqlKind;
 import org.seasar.doma.jdbc.SqlNode;
+import org.seasar.doma.jdbc.SqlLogType;
 import org.seasar.doma.jdbc.dialect.Dialect;
 import org.seasar.doma.jdbc.dialect.StandardDialect;
 
@@ -37,13 +40,21 @@ final class DomaTestSqlBuilder extends NodePreparedSqlBuilder {
         @Override public Dialect getDialect() { return new StandardDialect(); }
     };
 
-    private final Map<IfBlockNode, List<String>> branchKeys;
-    private final Map<List<String>, Integer> choices;
+    private record Choice(List<String> expressions, boolean loop) {}
+    private final Map<SqlNode, Choice> branchKeys;
+    private final Map<Choice, Integer> choices;
+    private final DomaTestExpressionEvaluator testEvaluator;
 
-    private DomaTestSqlBuilder(Map<IfBlockNode, List<String>> branchKeys, Map<List<String>, Integer> choices) {
-        super(CONFIG, SqlKind.SELECT, null);
+    private DomaTestSqlBuilder(Map<SqlNode, Choice> branchKeys, Map<Choice, Integer> choices) {
+        this(branchKeys, choices, new DomaTestExpressionEvaluator());
+    }
+
+    private DomaTestSqlBuilder(Map<SqlNode, Choice> branchKeys, Map<Choice, Integer> choices,
+            DomaTestExpressionEvaluator evaluator) {
+        super(CONFIG, SqlKind.SELECT, null, evaluator, SqlLogType.FORMATTED);
         this.branchKeys = branchKeys;
         this.choices = choices;
+        this.testEvaluator = evaluator;
     }
 
     static void validate(String maskedSql) { parse(maskedSql); }
@@ -51,20 +62,20 @@ final class DomaTestSqlBuilder extends NodePreparedSqlBuilder {
     static List<String> prepareVariants(String maskedSql, Map<String, String> originals) {
         try {
             SqlNode root = parse(maskedSql);
-            Map<IfBlockNode, List<String>> keys = branchKeys(root);
-            Map<List<String>, Integer> counts = new LinkedHashMap<>();
+            Map<SqlNode, Choice> keys = branchKeys(root);
+            Map<Choice, Integer> counts = new LinkedHashMap<>();
             for (var key : keys.values()) {
                 // Identical condition chains in UNION branches use the same representative choice.
-                counts.put(key, key.size() + 1); // The last choice is ELSE or the empty branch.
+                counts.put(key, key.loop() ? 2 : key.expressions().size() + 1); // ELSE/empty, or 1/2 sample iterations.
             }
-            List<Map<List<String>, Integer>> assignments = new ArrayList<>();
+            List<Map<Choice, Integer>> assignments = new ArrayList<>();
             assignments.add(Map.of());
             for (var entry : counts.entrySet()) {
                 if (assignments.size() > MAX_VARIANTS / entry.getValue()) {
                     throw new GenerationException("Metadata SQL has more than " + MAX_VARIANTS
                             + " conditional branch combinations. Use a concrete SELECT in Metadata SQL.");
                 }
-                List<Map<List<String>, Integer>> expanded = new ArrayList<>();
+                List<Map<Choice, Integer>> expanded = new ArrayList<>();
                 for (var assignment : assignments) {
                     for (int choice = 0; choice < entry.getValue(); choice++) {
                         var next = new LinkedHashMap<>(assignment);
@@ -108,8 +119,15 @@ final class DomaTestSqlBuilder extends NodePreparedSqlBuilder {
     }
 
     private static void inspectExpressions(SqlNode node) {
-        if (node instanceof ForBlockNode) {
-            throw new GenerationException("Doma loops require iteration values. Use a concrete SELECT in Metadata SQL; application code is not evaluated.");
+        if (node instanceof ForBlockNode block) {
+            inspectExpression(block.getForNode().getExpression(), block.getForNode().getLocation());
+        }
+        if (node instanceof EmbeddedVariableNode embedded) {
+            inspectExpression(embedded.getVariableName(), embedded.getLocation());
+            if (!DomaTestExpressionEvaluator.isClosed(embedded.getVariableName(), Set.of())) {
+                throw new GenerationException("Embedded SQL needs a constant expression for metadata lookup. "
+                        + "Use concrete SQL in Metadata SQL for runtime fragments; application code is not evaluated.");
+            }
         }
         if (node instanceof IfBlockNode block) {
             inspectExpression(block.getIfNode().getExpression(), block.getIfNode().getLocation());
@@ -130,24 +148,40 @@ final class DomaTestSqlBuilder extends NodePreparedSqlBuilder {
         }
     }
 
-    private static Map<IfBlockNode, List<String>> branchKeys(SqlNode root) {
-        Map<IfBlockNode, List<String>> keys = new LinkedHashMap<>();
-        collect(root, false, keys);
+    private static Map<SqlNode, Choice> branchKeys(SqlNode root) {
+        Map<SqlNode, Choice> keys = new LinkedHashMap<>();
+        collect(root, false, keys, Set.of());
         return keys;
     }
 
-    private static void collect(SqlNode node, boolean filter, Map<IfBlockNode, List<String>> keys) {
+    private static void collect(SqlNode node, boolean filter, Map<SqlNode, Choice> keys, Set<String> loopFlags) {
         if (node instanceof SelectStatementNode || node instanceof ClauseNode) {
             filter = node instanceof WhereClauseNode || node instanceof HavingClauseNode;
         }
-        if (node instanceof IfBlockNode block && !(filter && block.getElseifNodes().isEmpty()
+        if (node instanceof ForBlockNode block) {
+            var loop = block.getForNode();
+            if (!filter || containsClause(loop)) keys.put(block, new Choice(List.of(loop.getExpression().strip()), true));
+            var locals = new LinkedHashSet<>(loopFlags);
+            locals.add(loop.getIdentifier() + "_has_next");
+            locals.add(loop.getIdentifier() + "_index");
+            collect(loop, filter, keys, locals);
+            collect(block.getEndNode(), filter, keys, loopFlags);
+            return;
+        }
+        if (node instanceof IfBlockNode block && !loopCondition(block, loopFlags)
+                && !(filter && block.getElseifNodes().isEmpty()
                 && block.getElseNode() == null && !containsClause(block.getIfNode()))) {
             List<String> expressions = new ArrayList<>();
             expressions.add(block.getIfNode().getExpression().strip());
             block.getElseifNodes().forEach(alternative -> expressions.add(alternative.getExpression().strip()));
-            keys.put(block, List.copyOf(expressions));
+            keys.put(block, new Choice(List.copyOf(expressions), false));
         }
-        for (SqlNode child : node.getChildren()) collect(child, filter, keys);
+        for (SqlNode child : node.getChildren()) collect(child, filter, keys, loopFlags);
+    }
+
+    private static boolean loopCondition(IfBlockNode block, Set<String> names) {
+        return !names.isEmpty() && DomaTestExpressionEvaluator.isClosed(block.getIfNode().getExpression(), names)
+                && block.getElseifNodes().stream().allMatch(node -> DomaTestExpressionEvaluator.isClosed(node.getExpression(), names));
     }
 
     private static boolean containsClause(SqlNode node) {
@@ -160,13 +194,22 @@ final class DomaTestSqlBuilder extends NodePreparedSqlBuilder {
     }
 
     @Override public Void visitIfBlockNode(IfBlockNode node, Context context) {
-        List<String> key = branchKeys.get(node);
+        if (loopCondition(node, testEvaluator.loopFlags())) return super.visitIfBlockNode(node, context);
+        Choice key = branchKeys.get(node);
         int choice = key == null ? 0 : choices.get(key);
         if (choice == 0) node.getIfNode().accept(this, context);
         else if (choice <= node.getElseifNodes().size()) node.getElseifNodes().get(choice - 1).accept(this, context);
         else if (node.getElseNode() != null) node.getElseNode().accept(this, context);
         node.getEndNode().accept(this, context);
         return null;
+    }
+
+    @Override public Void visitForBlockNode(ForBlockNode node, Context context) {
+        Choice key = branchKeys.get(node);
+        int iterations = key == null ? 2 : choices.get(key) + 1;
+        testEvaluator.beginLoop(node.getForNode().getIdentifier(), iterations);
+        try { return super.visitForBlockNode(node, context); }
+        finally { testEvaluator.endLoop(); }
     }
 
     @Override public Void visitBindVariableNode(BindVariableNode node, Context context) {

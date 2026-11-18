@@ -78,7 +78,10 @@ public final class SqlInput {
     static List<String> metadataVariants(String sql, Dialect dialect) {
         Validated validated = inspect(sql, dialect);
         return DomaTestSqlBuilder.prepareVariants(validated.maskedSql(), validated.originals()).stream()
-                .map(prepared -> dialect == Dialect.SQLSERVER && validated.startsWithCte() ? ";" + prepared : prepared).toList();
+                .map(prepared -> {
+                    Validated assembled = inspect(prepared, dialect); // Check embedded constants as part of the final SELECT.
+                    return dialect == Dialect.SQLSERVER && assembled.startsWithCte() ? ";" + prepared : prepared;
+                }).toList();
     }
 
     private static Validated inspect(String sql, Dialect dialect) {
@@ -118,12 +121,9 @@ public final class SqlInput {
                     replacements.add(new Replacement(start, star + 1, expansion(comment.substring(7).strip())));
                     started = true;
                     i = star + 1;
-                } else if (comment.startsWith("%")) {
+                } else if (comment.startsWith("%") || comment.startsWith("#")) {
                     if (terminal >= 0) throw new GenerationException("Only one SELECT statement is allowed.");
                     // Doma's parser owns directive syntax and nesting; do not impose a second grammar here.
-                } else if (comment.startsWith("#") || comment.startsWith("^")) {
-                    throw new GenerationException("Replace embedded or literal Doma directives with a concrete SELECT in Metadata SQL. "
-                            + "Conditional SQL and bind comments with test literals (/* id */0) are supported.");
                 } else masks.token(sql, start, i, false, true);
                 continue;
             }

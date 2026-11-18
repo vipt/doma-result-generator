@@ -173,7 +173,7 @@ final class GenerateDialog extends TitleAreaDialog {
                 "MySQL: NO_BACKSLASH_ESCAPES", "PostgreSQL: legacy backslash strings", "SQL Server" });
         sqlSyntax.select(0);
         sqlSyntax.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-        note(sqlPage, "Doma parses template and condition syntax. Conditional alternatives are described separately and must return the same column names, order and JDBC types (up to 64 combinations). Simple filters and bind test values are included without evaluating application code. Loops need concrete SQL. Simple %expand is converted. The original file is unchanged.");
+        note(sqlPage, "Doma parses template syntax and assembles SQL. Alternatives must return the same column names, order and JDBC types (up to 64 combinations). Loops use sample elements and Doma's has_next/index flags; embedded constants and bind/literal test values are supported. Runtime SQL fragments need concrete values. Application code is not evaluated. The original file is unchanged.");
         sql = new StyledText(sqlPage, SWT.BORDER | SWT.MULTI | SWT.H_SCROLL | SWT.V_SCROLL);
         sql.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
         sql.setText(initialSql);

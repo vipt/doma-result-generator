@@ -164,7 +164,7 @@ WHERE 1=1
 
 Template syntax and nesting are parsed by Doma's own `SqlParser`, condition-expression syntax by its `ExpressionParser`, and SQL assembly by its `NodePreparedSqlBuilder`. There is no separate plug-in condition grammar or clause-scope validator. Leading logical operators such as `WHERE AND ...` and `HAVING OR ...`, including inside subqueries, are removed by the official builder. No source or Metadata SQL edits are needed.
 
-Since no DAO invocation arguments are supplied, an adapter includes simple filter bodies and test literals without evaluating conditions or application Java code. Opaque strings, quoted identifiers and bind comments are protected and restored. The visible template retains its condition comments; JDBC receives the official builder's assembled SQL. No result rows are fetched. Filters inside subqueries, CTEs and UNION branches are supported.
+Since no DAO invocation arguments are supplied, an adapter includes simple filter bodies and test literals without evaluating application conditions or Java code. Constants and Doma's loop flags can be evaluated by Doma itself as described below. Opaque strings, quoted identifiers and bind comments are protected and restored. The visible template retains its condition comments; JDBC receives the official builder's assembled SQL. No result rows are fetched. Filters inside subqueries, CTEs and UNION branches are supported.
 
 Conditional SELECT expressions with `%if`/`%elseif`/`%else` are also supported without rewriting the SQL. For example:
 
@@ -180,7 +180,27 @@ FROM employee e
 
 Conditional choices are assembled separately by the official Doma builder, including SELECT expressions, FROM/JOIN and ORDER BY alternatives that its parser accepts. The generator compares each variant's column names, order and JDBC types before generating a class. All must agree; type-mapping overrides do not bypass this check. A projection `%if` without `%else` also checks the empty branch. Identical condition-expression chains are chosen consistently across repeated occurrences, including UNION branches. Independent chains are combined, up to **64 combinations**, and identical assembled SQL is described once. Simple filter-only `%if`/`%end` bodies remain included, so ordinary optional filters do not multiply the combinations; this optimization follows Doma's syntax tree rather than a second SQL parser. Each description uses `getMetaData()`, never SELECT execution, and shares the existing Preview cancellation and timeout.
 
-If branch metadata differs or the combination limit is exceeded, select the intended concrete SELECT in **Metadata SQL**. Malformed templates are rejected by Doma's parser with its diagnostic code and, when available, a prepared-SQL line number, without exposing raw SQL. Loops (`%for`) still need concrete SQL because no iteration values are provided. Embedded/literal variables (`/*# ... */`, `/*^ ... */`) also require concrete SQL. The remaining plug-in adapter selects representative branches, preserves bind test literals and prepares literal `%expand` for JDBC metadata; it does not evaluate DAO arguments or application code. SELECT-only checks remain separate from template syntax. This is a generation-time adapter, not an unchanged DAO execution path, and does not prove which expression combinations occur at runtime.
+If branch metadata differs or the combination limit is exceeded, select the intended concrete SELECT in **Metadata SQL**. Malformed templates are rejected by Doma's parser with its diagnostic code and, when available, a prepared-SQL line number, without exposing raw SQL. The remaining plug-in adapter selects representative branches and loop samples, preserves test literals and prepares literal `%expand` for JDBC metadata; it does not evaluate DAO arguments or application code. SELECT-only checks remain separate from template syntax. This is a generation-time adapter, not an unchanged DAO execution path, and does not prove which expression combinations occur at runtime.
+
+### Loops and constant embedded SQL
+
+Filter loops can remain unchanged, including an embedded constant separator:
+
+```sql
+SELECT e.id, e.name FROM employee e
+WHERE (
+  /*%for item : filter.ids */
+    e.id = /*item*/1
+    /*%if item_has_next */ /*# "OR" */ /*%end*/
+  /*%end*/
+)
+```
+
+The adapter supplies a two-element sample collection to Doma's own loop builder for a simple filter loop. Doma sets/evaluates `item_has_next` and `item_index`, so separators are emitted between items and never after the last item. Bind values are taken from the SQL test literals, not from the synthetic elements. Index comparisons, negation, alternative separator branches, nested loops and shadowed loop identifiers follow the same official loop/condition implementation. Sample collections are supplied without invoking the application's collection expression. Conditions evaluated within a loop must use only its flags/index and constants; application-dependent conditions continue to use the generation adapter's representative branches.
+
+Constant embedded expressions such as `/*# "OR" */` or `/*# "O" + "R" */` use Doma's expression evaluator and embedded-SQL checks. Application variables, fields, methods, functions and constructors are never evaluated for embedded SQL; runtime fragments such as `/*# orderBy */` need a concrete value in Metadata SQL. Literal variables with test values, such as `/*^ item */1`, retain those test values just like bind comments. The assembled SQL is checked again for a single SELECT before it reaches JDBC.
+
+Loops outside simple filters are described with one and two sample elements, and the same column-metadata comparison applies; variable projection sizes cannot produce a single stable result class. Filter loops do not multiply variant combinations. In addition to the 64-combination limit, expansion is bounded to **256 sample elements per assembled SELECT**, including nested loops. These are representative metadata samples, not the caller's actual values or a proof for arbitrary collection sizes. All metadata descriptions remain cancellable and use the Preview timeout without calling SELECT execution APIs.
 
 **Metadata SQL → SQL syntax** defaults to automatic selection from the JDBC URL: PostgreSQL, MySQL/MariaDB, SQL Server, or generic non-nested comments for Oracle and other URLs. PostgreSQL/SQL Server support nested comments; MySQL supports backslash string escapes. Select the corresponding override for MySQL `NO_BACKSLASH_ESCAPES` or PostgreSQL legacy backslash strings. Automatic selection does not query the database's session mode.
 

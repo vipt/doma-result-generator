@@ -278,13 +278,13 @@ class GeneratorTest {
     @ValueSource(strings = { "select 1", "-- comment\nselect 'delete;?' as name; -- end",
             "select /* employeeId */1", "with example as (select 1 as id) select id from example",
             "select $$delete;?$$ as body", "select $tag$/*%if*/$tag$ as body",
-            "select [delete], `update`, \"drop\" from example" })
+            "select [delete], `update`, \"drop\" from example", "select /*^ name */'name'" })
     void acceptsConcreteSelects(String sql) { assertNotNull(SqlInput.validate(sql)); }
 
     @ParameterizedTest
     @ValueSource(strings = { "delete from employee", "select 1; delete from employee", "select ?",
             "select /*%expand alias*/* from employee", "select 1 /*%if enabled*/ where id = 1 /*%end*/",
-            "select /*# order */1", "select /*^ name */'name'", "select 'unclosed", "select /* broken",
+            "select /*# order */1", "select 'unclosed", "select /* broken",
             "with x as (delete from employee returning *) select * from x", "select id into example from employee", "" })
     void rejectsUnresolvedOrNonSelectStatements(String sql) {
         assertThrows(IllegalArgumentException.class, () -> SqlInput.validate(sql));

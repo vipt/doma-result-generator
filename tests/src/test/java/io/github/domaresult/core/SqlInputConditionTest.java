@@ -76,7 +76,8 @@ class SqlInputConditionTest {
             "SELECT id FROM /*%if active*/ employee /*%end*/",
             "SELECT id FROM employee WHERE id=1 ORDER BY /*%if active*/ id /*%end*/",
             "SELECT id FROM employee WHERE 1=1 /*%if active*/ AND id>0 LIMIT 1 /*%end*/",
-            "SELECT id FROM #where /*%if active*/ JOIN department ON 1=1 /*%end*/"
+            "SELECT id FROM #where /*%if active*/ JOIN department ON 1=1 /*%end*/",
+            "SELECT id FROM employee WHERE 1=1 /*%for id:ids*/ AND id>0 /*%end*/"
     })
     void retainsSupportedTemplatesForMetadataValidation(String sql) {
         assertEquals(sql, SqlInput.validate(sql, SqlInput.Dialect.SQLSERVER));
@@ -96,7 +97,6 @@ class SqlInputConditionTest {
             "SELECT id FROM employee WHERE /*%if active*/ id>0 /*%else*/ id<0 /*%elseif other*/ id=0 /*%end*/",
             "SELECT id FROM employee WHERE /*%if active*/ id>0 /*%elseif*/ id<0 /*%end*/",
             "SELECT id FROM employee WHERE /*%if active*/ id>0 /*%elseif */ id<0 /*%end*/",
-            "SELECT id FROM employee WHERE 1=1 /*%for id:ids*/ AND id>0 /*%end*/",
             "SELECT id FROM employee WHERE 1=1 /*%if*/ AND id>0 /*%end*/",
             "SELECT id FROM employee WHERE 1=1 /*%if active*/ AND id>0",
             "SELECT id FROM employee WHERE 1=1 /*%end*/",

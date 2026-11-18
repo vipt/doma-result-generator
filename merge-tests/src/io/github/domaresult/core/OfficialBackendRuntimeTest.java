@@ -36,6 +36,17 @@ public class OfficialBackendRuntimeTest {
         assertEquals(source, SqlInput.validate(source, SqlInput.Dialect.SQLSERVER));
     }
 
+    @Test public void officialLoopEvaluationAndEmbeddedConstantsWorkInsideThePluginClassLoader() {
+        String source = "SELECT 1 AS id WHERE (/*%for item:items*/ 1=/*item*/1 "
+                + "/*%if item_has_next*/ /*# \"OR\" */ /*%end*/ /*%end*/)";
+        String sql = SqlInput.forMetadata(source, SqlInput.Dialect.SQLSERVER);
+        assertFalse(sql.contains("/*%"));
+        assertFalse(sql.contains("/*#"));
+        assertEquals(2, sql.split("1=/\\*item\\*/1", -1).length - 1);
+        assertEquals(1, java.util.regex.Pattern.compile("\\bOR\\b").matcher(sql).results().count());
+        assertEquals(source, SqlInput.validate(source, SqlInput.Dialect.SQLSERVER));
+    }
+
     @Test public void officialLibrariesWorkWhileTheJdbcDriverOwnsTheContextClassLoader() throws Exception {
         Thread thread = Thread.currentThread();
         ClassLoader previous = thread.getContextClassLoader();
