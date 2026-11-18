@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 package io.github.domaresult.ui;
 
+import io.github.domaresult.core.ExistingClassAction;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -12,24 +13,28 @@ import org.eclipse.compare.structuremergeviewer.DiffNode;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.swt.graphics.Image;
 
-/** Read-only comparison; only the generator dialog's Update action writes a file. */
+/** Read-only comparison; only the generator dialog's final action writes a file. */
 final class SourceCompareInput extends CompareEditorInput {
     private final String name, before, after;
 
     SourceCompareInput(String name, String before, String after) {
-        super(configuration());
+        this(name, before, after, ExistingClassAction.MERGE);
+    }
+
+    SourceCompareInput(String name, String before, String after, ExistingClassAction action) {
+        super(configuration(action));
         this.name = name;
         this.before = before;
         this.after = after;
-        setTitle("Review changes: " + name);
+        setTitle((action == ExistingClassAction.OVERWRITE ? "Review overwrite: " : "Review merge: ") + name);
     }
 
-    private static CompareConfiguration configuration() {
+    private static CompareConfiguration configuration(ExistingClassAction action) {
         CompareConfiguration config = new CompareConfiguration();
         config.setLeftEditable(false);
         config.setRightEditable(false);
         config.setLeftLabel("Current saved class");
-        config.setRightLabel("Proposed update");
+        config.setRightLabel(action == ExistingClassAction.OVERWRITE ? "Proposed overwrite" : "Proposed merge");
         return config;
     }
 

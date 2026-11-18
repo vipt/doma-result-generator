@@ -50,8 +50,8 @@
         <li>DAOの宣言型とSQLのテスト値からダミー引数を作成。DTO・定数はプロジェクトのクラスパスから自動で読み込みます。先にプロジェクトをビルドしてください。</li>
         <li>PreviewではSELECTを実行して列情報を取得します。0件の結果でも生成できます。取得列が引数で変わるSQLでは、ダミー値で選ばれた経路の<strong>Proposed Java</strong>を確認してください。</li>
         <li>SQL Serverの<code>WITH</code>で始まるCTEにも対応。ラッパーや<code>SET FMTONLY</code>は挿入しません。</li>
-        <li>既存クラスは <strong>Preview → 差分比較 → Update</strong>で更新。手動メソッドやコメントを保持し、衝突がある場合は更新を停止。</li>
-        <li>管理タグのない既存フィールドも、型とDomaの列対応が一致すればそのまま利用。コンストラクター・コメント・equalsなどを保持し、新しい列だけを追加できます。</li>
+        <li>既存ファイルがある場合、<strong>Preview時にMerge／Overwrite／Cancelを選択</strong>。マージは手動コードを保持し、上書きはファイル全体を生成し直します。どちらも差分を確認して最終ボタンを押すまで保存しません。</li>
+        <li>マージでは管理タグのない既存フィールドも、型とDomaの列対応が一致すればそのまま利用。コンストラクター・コメント・equalsなどを保持し、新しい列だけを追加できます。上書きでは手動メンバーとコメントも置き換わります。</li>
         <li>接続待ちでも進捗ダイアログの<strong>Cancel</strong>でPreviewの待機を中止。<strong>Preview timeout (seconds)</strong>で待ち時間の上限を設定（初期値30秒）。遅れて返った結果は適用しません。</li>
       </ul>
       <pre><code># name.properties
@@ -105,8 +105,8 @@
         <li>Dummy values use DAO parameter types and SQL test literals. DTOs and constants load from the project's runtime classpath automatically; build the project first.</li>
         <li>Preview executes the SELECT and reads metadata even for an empty result. If arguments change projected columns, review <strong>Proposed Java</strong> for the path selected with dummy values.</li>
         <li>Use SQL Server CTEs starting with <code>WITH</code>, without injected wrappers or SET FMTONLY preambles.</li>
-        <li>Review existing-class changes before <strong>Update</strong>, retaining handwritten methods and comments. Conflicts stop the update.</li>
-        <li>Reuse existing unmarked fields when types and Doma column mappings match, keeping constructors, comments and custom methods unchanged while adding new columns.</li>
+        <li>If the file exists, <strong>choose Merge, Overwrite or Cancel when pressing Preview</strong>. Merge retains custom code; Overwrite regenerates the entire file. Both show a read-only comparison before the final action saves the file.</li>
+        <li>Merge reuses existing unmarked fields when types and Doma column mappings match, keeping constructors, comments and custom methods unchanged while adding new columns. Overwrite removes existing custom members and comments.</li>
         <li>Share named connection profiles across projects in one workspace. Remember each project's last profile and Package, with optional encrypted password storage in Eclipse Secure Storage.</li>
         <li>Cancel the preview wait from its progress dialog even while connecting. Set <strong>Preview timeout (seconds)</strong> to limit the wait (default: 30 seconds). Late results are discarded.</li>
       </ul>

@@ -24,6 +24,7 @@ public final class JdbcErrorDetails {
         CLOSING_DRIVER("unloading the JDBC driver", "Check driver JAR dependencies and Java compatibility."),
         GENERATING_CLASS("generating the result class", "Check the result types and project Java build path."),
         MERGING_CLASS("merging the existing result class", "Check the saved class, imports and project Java build path."),
+        PREPARING_OVERWRITE("preparing the class overwrite preview", "Check the proposed class and project Java build path."),
         VALIDATING_CLASS("validating the proposed result class", "Check the existing Java file and project Java build path; refresh Preview before updating.");
 
         private final String label, hint;

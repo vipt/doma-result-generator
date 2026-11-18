@@ -13,7 +13,7 @@ An independent Eclipse plug-in that generates a Doma 2 entity from the columns r
 3. Select a saved **Connection profile**, or select your JDBC driver JAR(s) and enter the driver class, URL and credentials. Drivers are supplied separately, so vendor libraries are not redistributed.
 4. Select a Java source folder, package and class name. Optionally select a UTF-8 type mapping file; `name.properties` in the project root is initially selected when present.
 5. Review **Metadata SQL** and select **Preview**. Dummy arguments are supplied automatically and Doma builds the SQL. Build the project first when using DTOs or application constants. Changes do not modify the SQL file.
-6. Select **Preview** and review **Proposed Java**. For a new class, select **Generate**. For an existing class, review the comparison and select **Update**.
+6. If the file exists, choose **Merge**, **Overwrite** or **Cancel**. Review **Proposed Java** and the comparison, then select **Generate** for a new class or the chosen **Merge/Overwrite** action for an existing file.
 
 Preview uses the official doma-gen SQL-result reader: it executes the SELECT and reads its result-set metadata without iterating rows. Use the intended JDBC connection and review Metadata SQL before Preview.
 
@@ -106,7 +106,15 @@ The target project must have Doma configured, including annotation processing. T
 
 ## Updating an existing class
 
-Select the existing class's source folder, package and name, then press **Preview**. The plug-in merges the new SELECT result definition into the saved Java source and opens an Eclipse comparison: **Current saved class** on the left, **Proposed update** on the right. Both sides are read-only. Close the comparison and select **Update** to apply the reviewed result. **Compare changes...** reopens the comparison; **Proposed Java** shows the complete merged source. Closing the comparison or canceling the generator writes nothing. With no changes, Update stays disabled.
+Select the existing class's source folder, package and name, then press **Preview**. Before connecting to the database, choose **Merge**, **Overwrite** or **Cancel**. The choice appears for each preview, with Merge selected by default. New files do not show this prompt.
+
+- **Merge** starts from the existing class and preserves compatible existing fields, handwritten methods, constructors and comments.
+- **Overwrite** replaces the entire file with the newly generated class, removing custom methods, constructors, comments and other top-level types. It can regenerate a file even when missing ownership tags or incompatible handwritten fields prevent merging.
+- **Cancel**, or closing the choice dialog, stops previewing before any database connection or Java-file write.
+
+After choosing, review the read-only Eclipse comparison: **Current saved class** on the left and **Proposed merge** or **Proposed overwrite** on the right. Close it and select **Merge** or **Overwrite** in the generator dialog to save. **Compare changes...** reopens the comparison; **Proposed Java** shows the complete proposed file. Closing the comparison or canceling the generator writes nothing. With no changes, the final action stays disabled.
+
+The preservation and ownership rules below apply to **Merge**.
 
 Generated fields and accessors carry the Javadoc ownership tag `@domaGenerated`. The updater uses JDT syntax nodes and source ranges to make targeted changes:
 
@@ -120,7 +128,7 @@ Generated fields and accessors carry the Javadoc ownership tag `@domaGenerated`.
 
 Existing UTF-8 files with a BOM can be updated; the BOM is preserved when writing.
 
-Save existing edits before previewing. At Update, the saved source and modification stamp must still match the preview; dirty editors, changed files and deleted files stop the update. The file is written in its existing character encoding, with Eclipse local-history preservation enabled. Local-history retention follows workspace settings. The comparison covers the target Java file; callers in other files may still need changes when its public API changes.
+Save existing edits before previewing. **Both Merge and Overwrite** require the saved source and modification stamp to match the preview; dirty editors, changed files and deleted files stop the write. Overwrite also validates the generated Java and preserves the existing encoding, BOM and line delimiters. Eclipse local-history preservation is enabled; retention follows workspace settings. The comparison covers the target Java file, so callers in other files may still need changes.
 
 ### Classes from the earlier prototype
 
@@ -130,7 +138,7 @@ For a class with the original `Generated from SELECT result metadata.` header an
 
 An existing `@Entity` with `private String code;` can reuse that field for a string-valued `CODE` result column, without adding `@Column` or `@domaGenerated`. Column comparisons ignore case, as Doma's result mapping does. Explicit literal `@Column(name = "...")` mappings and the class's `@Entity(naming = NamingType....)` convention are honored; unspecified naming uses the standard NONE convention.
 
-Constructors, `equals`, `hashCode`, `toString`, comments and handwritten fields absent from the SELECT stay in place. If everything matches, there is no diff and Update stays disabled. Additional columns produce new generated members for comparison.
+In Merge mode, constructors, `equals`, `hashCode`, `toString`, comments and handwritten fields absent from the SELECT stay in place. If everything matches, there is no diff and Merge stays disabled. Additional columns produce new generated members for comparison.
 
 Reuse does not grant permission to change the existing field's type or remove it on subsequent previews. Type/mapping differences and static, final, transient or Doma-excluded fields stop the merge with a specific explanation. Custom `Config.getNaming()` implementations and constant expressions in `@Column` names are not executed/evaluated by this source check.
 

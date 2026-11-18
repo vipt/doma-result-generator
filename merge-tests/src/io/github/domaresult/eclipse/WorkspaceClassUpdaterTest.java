@@ -3,6 +3,7 @@ package io.github.domaresult.eclipse;
 
 import static org.junit.Assert.*;
 import io.github.domaresult.core.EntityGenerator;
+import io.github.domaresult.core.ExistingClassAction;
 import io.github.domaresult.core.GenerationException;
 import io.github.domaresult.core.ResultColumn;
 import io.github.domaresult.core.SourceUpdatePlan;
@@ -117,6 +118,84 @@ public class WorkspaceClassUpdaterTest {
         updater.apply(target, new SourceUpdatePlan(manual, result.source(), before.modificationStamp()));
         assertEquals(result.source(), updater.snapshot(target).source());
         assertTrue(updater.snapshot(target).source().contains(members));
+    }
+
+    @Test public void mergeKeepsCustomMembersWhileOverwritePreviewsOnlyTheGeneratedClass() throws Exception {
+        String manual = handwrittenCodeValue();
+        write(manual);
+        var before = updater.snapshot(target);
+        String desired = new EntityGenerator().generate("example", "Result", List.of(new ResultColumn("CODE", "java.lang.String"), new ResultColumn("VALUE", "java.lang.String")));
+        var merge = updater.preview(target, manual, desired, ExistingClassAction.MERGE, null, stage -> {});
+        assertEquals(manual, merge.source());
+        var stages = new ArrayList<JdbcErrorDetails.Stage>();
+        var overwrite = updater.preview(target, manual, desired, ExistingClassAction.OVERWRITE, null, stages::add);
+        assertEquals(desired, overwrite.source());
+        assertFalse(overwrite.source().contains("public Result(String code"));
+        assertFalse(overwrite.source().contains("hashCode()"));
+        assertFalse(overwrite.source().contains("private String memo;"));
+        assertTrue(stages.contains(JdbcErrorDetails.Stage.PREPARING_OVERWRITE));
+        assertTrue(stages.contains(JdbcErrorDetails.Stage.VALIDATING_CLASS));
+        assertFalse(stages.contains(JdbcErrorDetails.Stage.MERGING_CLASS));
+        // Canceling after either preview means apply is never called.
+        assertEquals(before, updater.snapshot(target));
+        updater.apply(target, new SourceUpdatePlan(manual, overwrite.source(), before.modificationStamp()));
+        assertEquals(desired, updater.snapshot(target).source());
+        assertTrue(file().getHistory(null).length > 0);
+    }
+
+    @Test public void overwriteCanReplaceAnIncompatibleHandwrittenFieldWithoutMergeOwnership() throws Exception {
+        write("package example; @org.seasar.doma.Entity public class Result { /** Keep only in Merge. */ private String id; public String getId(){return id;} }");
+        var before = updater.snapshot(target);
+        String desired = generated("java.lang.Long");
+        assertThrows(GenerationException.class, () -> updater.preview(target, before.source(), desired, ExistingClassAction.MERGE, null, stage -> {}));
+        var overwrite = updater.preview(target, before.source(), desired, ExistingClassAction.OVERWRITE, null, stage -> {});
+        assertEquals(desired, overwrite.source());
+        assertEquals(before, updater.snapshot(target));
+    }
+
+    @Test public void overwriteCanRegenerateAPlainClassWithOldSyntaxErrors() throws Exception {
+        write("package example; public class Result { broken ??? source");
+        var before = updater.snapshot(target);
+        String desired = generated("java.lang.Long");
+        var overwrite = updater.preview(target, before.source(), desired, ExistingClassAction.OVERWRITE, null, stage -> {});
+        assertEquals(desired, overwrite.source());
+        assertEquals(before, updater.snapshot(target));
+    }
+
+    @Test public void overwriteStillRejectsInvalidGeneratedJavaWithoutChangingTheFile() throws Exception {
+        var before = updater.snapshot(target);
+        String invalid = generated("java.lang.Long").replace("return id;", "return missingSymbol;");
+        var error = assertThrows(GenerationException.class, () -> updater.preview(target, before.source(), invalid, ExistingClassAction.OVERWRITE, null, stage -> {}));
+        assertTrue(error.getMessage().contains("Java error"));
+        assertEquals(before, updater.snapshot(target));
+    }
+
+    @Test public void overwriteDoesNotBypassChangesSavedAfterPreviewOrUnsavedEditorChecks() throws Exception {
+        var before = updater.snapshot(target);
+        var overwrite = updater.preview(target, before.source(), generated("java.lang.Long"), ExistingClassAction.OVERWRITE, null, stage -> {});
+        var plan = new SourceUpdatePlan(before.source(), overwrite.source(), before.modificationStamp());
+        write(before.source() + "\n// saved after preview\n");
+        assertThrows(GenerationException.class, () -> updater.apply(target, plan));
+        String saved = updater.snapshot(target).source();
+        var manager = FileBuffers.getTextFileBufferManager();
+        manager.connect(file().getFullPath(), LocationKind.IFILE, null);
+        try {
+            var buffer = manager.getTextFileBuffer(file().getFullPath(), LocationKind.IFILE);
+            buffer.getDocument().set(saved + "// unsaved edit\n");
+            assertThrows(GenerationException.class, () -> updater.apply(target, new SourceUpdatePlan(saved, overwrite.source(), file().getModificationStamp())));
+            try (var stream = file().getContents()) { assertEquals(saved, new String(stream.readAllBytes(), StandardCharsets.UTF_8)); }
+        } finally { manager.disconnect(file().getFullPath(), LocationKind.IFILE, null); }
+    }
+
+    @Test public void overwritePreservesExistingBomLineDelimitersAndCharacterEncoding() throws Exception {
+        write("\uFEFF" + handwrittenCodeValue().replace("\n", "\r\n"));
+        var before = updater.snapshot(target);
+        String desired = generated("java.lang.Long");
+        var overwrite = updater.preview(target, before.source(), desired, ExistingClassAction.OVERWRITE, null, stage -> {});
+        assertEquals("\uFEFF" + desired.replace("\n", "\r\n"), overwrite.source());
+        updater.apply(target, new SourceUpdatePlan(before.source(), overwrite.source(), before.modificationStamp()));
+        assertEquals(overwrite.source(), updater.snapshot(target).source());
+        assertEquals("UTF-8", file().getCharset());
     }
 
     private String handwrittenCodeValue() {

@@ -6,6 +6,7 @@ import io.github.domaresult.core.SourceUpdatePlan;
 import io.github.domaresult.core.JavaSource;
 import io.github.domaresult.core.JdbcErrorDetails;
 import io.github.domaresult.core.EntityGenerator;
+import io.github.domaresult.core.ExistingClassAction;
 import io.github.domaresult.core.ResultColumn;
 import io.github.domaresult.merge.EntityMerger;
 import java.io.ByteArrayInputStream;
@@ -57,12 +58,26 @@ public final class WorkspaceClassUpdater {
 
     public EntityMerger.Result preview(ICompilationUnit target, String before, String generated,
             IProgressMonitor monitor, Consumer<JdbcErrorDetails.Stage> progress) throws CoreException {
-        progress.accept(JdbcErrorDetails.Stage.MERGING_CLASS);
-        var project = target.getJavaProject();
+        return preview(target, before, generated, ExistingClassAction.MERGE, monitor, progress);
+    }
+
+    public EntityMerger.Result preview(ICompilationUnit target, String before, String generated, ExistingClassAction action,
+            IProgressMonitor monitor, Consumer<JdbcErrorDetails.Stage> progress) throws CoreException {
+        java.util.Objects.requireNonNull(action, "Choose Merge or Overwrite before previewing an existing class.");
         EntityMerger.Result merged;
-        try {
-            merged = new EntityMerger().merge(before, generated, project.getOptions(true), typeLookup(project));
-        } catch (TypeLookupFailure e) { throw (JavaModelException) e.getCause(); }
+        if (action == ExistingClassAction.OVERWRITE) {
+            progress.accept(JdbcErrorDetails.Stage.PREPARING_OVERWRITE);
+            String replacement = generated;
+            if (before.contains("\r\n")) replacement = replacement.replace("\r\n", "\n").replace("\n", "\r\n");
+            if (before.startsWith("\uFEFF") && !replacement.startsWith("\uFEFF")) replacement = "\uFEFF" + replacement;
+            merged = new EntityMerger.Result(replacement, List.of());
+        } else {
+            progress.accept(JdbcErrorDetails.Stage.MERGING_CLASS);
+            var project = target.getJavaProject();
+            try {
+                merged = new EntityMerger().merge(before, generated, project.getOptions(true), typeLookup(project));
+            } catch (TypeLookupFailure e) { throw (JavaModelException) e.getCause(); }
+        }
         if (!before.equals(merged.source())) {
             progress.accept(JdbcErrorDetails.Stage.VALIDATING_CLASS);
             validate(target, merged.source(), monitor);

@@ -2,6 +2,7 @@
 package io.github.domaresult.ui;
 
 import io.github.domaresult.core.GenerationException;
+import io.github.domaresult.core.ExistingClassAction;
 import io.github.domaresult.core.DomaSql;
 import io.github.domaresult.core.JavaNames;
 import io.github.domaresult.core.JdbcDriverLoader;
@@ -90,6 +91,7 @@ final class GenerateDialog extends TitleAreaDialog {
     private String lastJdbcError;
     private ICompilationUnit previewTarget;
     private SourceUpdatePlan updatePlan;
+    private ExistingClassAction previewAction;
     private final WorkspaceClassUpdater updater = new WorkspaceClassUpdater();
     private record PreviewResult(String source, List<String> notes) {}
 
@@ -385,6 +387,7 @@ final class GenerateDialog extends TitleAreaDialog {
         generated = null;
         previewTarget = null;
         updatePlan = null;
+        previewAction = null;
         lastJdbcError = null;
         if (getButton(IDialogConstants.OK_ID) != null) {
             getButton(IDialogConstants.OK_ID).setEnabled(false);
@@ -423,13 +426,20 @@ final class GenerateDialog extends TitleAreaDialog {
             JavaNames.validateTarget(pkg, name);
             ICompilationUnit target = roots.get(sourceFolder.getSelectionIndex()).getPackageFragment(pkg).getCompilationUnit(name + ".java");
             boolean existing = target.exists();
+            ExistingClassAction selected = ExistingClassAction.MERGE;
             String before;
             long stamp;
             if (existing) {
+                selected = ExistingClassActionDialog.open(getShell(), target.getPath().toPortableString());
+                if (selected == null) {
+                    setMessage("Preview canceled. The existing class was not changed.");
+                    return;
+                }
                 var snapshot = updater.snapshot(target);
                 stamp = snapshot.modificationStamp();
                 before = snapshot.source();
             } else { before = null; stamp = IResource.NULL_STAMP; }
+            final ExistingClassAction action = selected;
             if (driverClass.getText().isBlank() || jdbcUrl.getText().isBlank()) {
                 throw new IllegalArgumentException("Enter the JDBC driver class and JDBC URL.");
             }
@@ -486,7 +496,7 @@ final class GenerateDialog extends TitleAreaDialog {
                         }
                         cancellation.check();
                         if (existing) {
-                            var merged = classUpdater.preview(target, before, fresh, backgroundMonitor, stage::set);
+                            var merged = classUpdater.preview(target, before, fresh, action, backgroundMonitor, stage::set);
                             cancellation.check();
                             return new PreviewResult(merged.source(), merged.notes());
                         }
@@ -505,18 +515,21 @@ final class GenerateDialog extends TitleAreaDialog {
             generated = result.get().source();
             previewTarget = target;
             updatePlan = existing ? new SourceUpdatePlan(before, generated, stamp) : null;
+            previewAction = existing ? action : null;
             preview.setText(generated);
             tabs.setSelection(2);
-            getButton(IDialogConstants.OK_ID).setText(existing ? "Update" : "Generate");
+            getButton(IDialogConstants.OK_ID).setText(existing ? action == ExistingClassAction.OVERWRITE ? "Overwrite" : "Merge" : "Generate");
             boolean changes = !existing || updatePlan.hasChanges();
             getButton(COMPARE).setEnabled(existing && changes);
             if (existing && changes) {
                 setMessage((result.get().notes().isEmpty() ? "" : String.join(" ", result.get().notes()) + " ")
-                        + "Review the comparison, then select Update. Custom members and comments are retained.");
+                        + (action == ExistingClassAction.OVERWRITE
+                                ? "Review the comparison, then select Overwrite. Existing custom members and comments will be removed."
+                                : "Review the comparison, then select Merge. Custom members and comments are retained."));
                 showChanges();
             } else {
                 getButton(IDialogConstants.OK_ID).setEnabled(changes);
-                setMessage(existing ? "No generated-member changes are needed."
+                setMessage(existing ? "No changes are needed for the selected action."
                         : "Review the proposed class, then select Generate.");
             }
         } catch (InvocationTargetException e) {
@@ -552,7 +565,8 @@ final class GenerateDialog extends TitleAreaDialog {
 
     private void showChanges() {
         if (updatePlan == null || !updatePlan.hasChanges()) return;
-        SourceCompareInput comparison = new SourceCompareInput(previewTarget.getElementName(), updatePlan.before(), updatePlan.after());
+        getButton(IDialogConstants.OK_ID).setEnabled(false);
+        SourceCompareInput comparison = new SourceCompareInput(previewTarget.getElementName(), updatePlan.before(), updatePlan.after(), previewAction);
         CompareUI.openCompareDialog(comparison);
         getButton(IDialogConstants.OK_ID).setEnabled(comparison.getCompareResult() != null);
     }
@@ -570,7 +584,7 @@ final class GenerateDialog extends TitleAreaDialog {
                 var pkg = root.createPackageFragment(packageName.getText().trim(), true, new NullProgressMonitor());
                 String fileName = className.getText().trim() + ".java";
                 if (pkg.getCompilationUnit(fileName).exists()) {
-                    throw new GenerationException("The class was created after Preview. Refresh Preview to review an update.");
+                    throw new GenerationException("The class was created after Preview. Refresh Preview to choose Merge or Overwrite.");
                 }
                 unit = pkg.createCompilationUnit(fileName, generated, false, new NullProgressMonitor());
             }
