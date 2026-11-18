@@ -147,7 +147,12 @@ class SqlInputConditionTest {
             }
             Connection guarded = (Connection) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[] { Connection.class }, (proxy, method, args) -> {
                 assertEquals("prepareStatement", method.getName());
-                assertEquals(FILTER_SQL, args[0]);
+                String jdbcSql = (String) args[0];
+                assertFalse(jdbcSql.contains("/*%if"));
+                assertFalse(jdbcSql.contains("/*%end"));
+                assertTrue(jdbcSql.contains("e.status IN (''"));
+                assertTrue(jdbcSql.contains("'A'"));
+                assertTrue(jdbcSql.contains("'B'"));
                 PreparedStatement statement = (PreparedStatement) method.invoke(real, args);
                 return Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[] { PreparedStatement.class }, (p, call, values) -> {
                     if (call.getName().startsWith("execute")) fail("Metadata lookup must not execute the SELECT");

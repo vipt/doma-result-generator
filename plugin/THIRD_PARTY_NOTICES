@@ -1,0 +1,48 @@
+Doma Result Generator - bundled runtime libraries
+
+The update site redistributes the following Maven artifacts. Tycho adds OSGi
+metadata to artifacts that do not already contain it; original library classes
+and resources are retained. This does not make the plug-in an official Doma,
+Eclipse, Apache or MojoHaus product.
+
+* Doma-Gen 2.28.0 (org.seasar.doma:doma-gen)
+  Copyright 2019 domaframework.org
+  https://github.com/domaframework/doma-gen
+  Apache License 2.0 (see LICENSE in this plug-in)
+
+* Doma Core 2.57.0 (org.seasar.doma:doma-core)
+  https://github.com/domaframework/doma
+  Apache License 2.0 (see LICENSE in this plug-in)
+
+* Apache FreeMarker 2.3.34 (org.freemarker:freemarker)
+  https://freemarker.apache.org/
+  Apache License 2.0; original license/attributions are in its META-INF/LICENSE.
+
+* Apache Ant and Ant Launcher 1.10.18 (org.apache.ant:ant, ant-launcher)
+  https://ant.apache.org/
+  Apache License 2.0; original META-INF/LICENSE.txt and NOTICE.txt are retained.
+  These satisfy doma-gen's library dependencies; no Ant task is launched.
+
+* Animal Sniffer Annotations 1.9 (org.codehaus.mojo:animal-sniffer-annotations)
+  https://github.com/mojohaus/animal-sniffer
+  The MIT License follows:
+
+Copyright (c) 2008 Kohsuke Kawaguchi and codehaus.org.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.

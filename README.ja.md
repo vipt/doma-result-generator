@@ -122,7 +122,9 @@ WHERE 1=1
 /*%end*/
 ```
 
-条件式やアプリケーションのJavaコードは評価せず、すべての条件本文とテスト値を含むSQLとして列情報を取得します。条件コメント自体も保持します。結果行の取得は行いません。サブクエリ・CTE・UNION内の検索条件にも対応しますが、SQL自体がテスト値を使った通常のSELECTとして有効である必要があります。
+SQLの解析・組み立てにはDoma本体の`SqlParser`と`NodePreparedSqlBuilder`を使用します。`WHERE AND ...`や`HAVING OR ...`の先頭の論理演算子も、本体と同じ組み立て処理で除去します。サブクエリ内にも適用され、SQLファイルやMetadata SQL欄の手動修正は不要です。
+
+DAOの実行時引数を受け取らないため、条件式やアプリケーションのJavaコードは評価せず、すべての対応可能な条件本文とテスト値を含むSQLを組み立てます。文字列・引用識別子・バインドコメントはアダプターで保護して元の内容へ戻します。条件コメントは表示上保持し、JDBC用SQLでは本体の組み立て結果に従います。結果行の取得は行いません。サブクエリ・CTE・UNION内の検索条件にも対応します。
 
 取得列やFROMなどを切り替える分岐、WHERE／HAVING句自体を追加・削除する分岐、`%else`・`%elseif`・`%for`・埋め込み変数・リテラル変数は自動処理しません。これらは**Metadata SQL**内で具体的なSELECTに置き換えてください。`%if`と`%end`は同じ検索句・クエリ・括弧の範囲内で対応させます。未対応の分岐や対応しないタグは行番号付きで案内します。
 
@@ -199,7 +201,11 @@ Eclipse本体を取得せずにコアのテストだけ実行する場合:
 
 [doma-gen](https://github.com/domaframework/doma-gen)はアーカイブ済みで、後継の[doma-codegen-plugin](https://github.com/domaframework/doma-codegen-plugin)が案内されています。Doma 2向けは後継ツールの2系です。公式にもSQLの結果から生成する機能があり、このプラグインではEclipse上でのSQL選択・接続設定・プレビュー・ファイル生成を提供します。
 
-本プラグインはdoma-genを直接呼び出していません。列情報取得・新規クラス生成・既存クラスへの差分更新は独自実装です。公式の標準型マッピングを参照し、TINYINTからShortへの変換、SQLXML型の対応を反映しました。公式ソースやGradle/Antの実行環境は同梱していません。公式の結果セット読み取り処理はSELECTを実行しますが、この試作版は実行前メタデータを利用します。詳細と参照ソースは[英語README](README.md#relationship-to-the-official-generator)にまとめています。
+現在は**doma-gen 2.28.0の`EntityDescFactory`・`EntityPropertyDescFactory`・`Generator`を直接呼び出します**。privateフィールド、`@domaGenerated`管理タグ、型名の衝突対策にはEclipse向けの出力テンプレートとアダプターを使います。SQLテンプレートの解析・組み立ては**Doma Core 2.57.0の`SqlParser`・`NodePreparedSqlBuilder`**を使用します。
+
+Eclipseの接続プロファイル、プレビュー、既存クラスへの差分更新はプラグインが担当します。公式ライブラリと依存ライブラリは更新サイトに同梱し、GradleやAntコマンドの別途インストールは不要です。Antタスクとしてdoma-gen全体を起動する方式ではありません。
+
+DAO呼び出しと完全に同じ実行ではありません。実行時引数の代わりにSQLのテスト値を使い、対応する検索条件本文を含めるためのアダプターを介します。公式doma-genの`ResultSetMetaReader`はSELECTを実行するため呼び出さず、列情報は引き続きJDBCの実行前メタデータで取得します。型マッピング・名前規則と手動コード保持の仕様も維持します。詳細と参照ソースは[英語README](README.md#relationship-to-the-official-generator)、再配布ライブラリは[THIRD_PARTY_NOTICES](plugin/THIRD_PARTY_NOTICES)に記載しています。
 
 ## オープンソースとしての公開
 

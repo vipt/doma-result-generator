@@ -23,15 +23,21 @@ class SqlServerCteMetadataTest {
     void terminatesTheDriverMetadataPreambleBeforeCtesIncludingCommentedHeaders(String header) {
         String source = header + CTE;
         assertEquals(source, SqlInput.validate(source, SqlInput.Dialect.SQLSERVER));
-        assertEquals(";" + source, SqlInput.forMetadata(source, SqlInput.Dialect.SQLSERVER));
-        assertEquals(";" + source, SqlInput.forMetadata(SqlInput.forMetadata(source, SqlInput.Dialect.SQLSERVER), SqlInput.Dialect.SQLSERVER));
+        String metadata = SqlInput.forMetadata(source, SqlInput.Dialect.SQLSERVER);
+        assertTrue(metadata.startsWith(";"));
+        assertTrue(metadata.endsWith(CTE));
+        if (!header.isBlank()) assertTrue(metadata.contains(header.strip()));
+        assertEquals(metadata, SqlInput.forMetadata(metadata, SqlInput.Dialect.SQLSERVER));
     }
 
     @ParameterizedTest @ValueSource(strings = { ";", ";;", " ; -- header\n", "/* header */ ; /* after separator */\n" })
     void acceptsExistingCteSeparatorsWithoutAddingAnother(String prefix) {
         String source = prefix + CTE;
         assertEquals(source, SqlInput.validate(source, SqlInput.Dialect.SQLSERVER));
-        assertEquals(source, SqlInput.forMetadata(source, SqlInput.Dialect.SQLSERVER));
+        String metadata = SqlInput.forMetadata(source, SqlInput.Dialect.SQLSERVER);
+        assertTrue(metadata.startsWith(";"));
+        assertFalse(metadata.startsWith(";;"));
+        assertTrue(metadata.endsWith(CTE));
     }
 
     @ParameterizedTest @EnumSource(value = SqlInput.Dialect.class, names = "SQLSERVER", mode = EnumSource.Mode.EXCLUDE)
@@ -70,7 +76,10 @@ class SqlServerCteMetadataTest {
         String source = "with sample as (select 1 as id) select id from sample where 1=1 /*%if active*/ and id>0 /*%end*/; -- end";
         String visible = source.replace("; -- end", " -- end");
         assertEquals(visible, SqlInput.validate(source, SqlInput.Dialect.SQLSERVER));
-        assertEquals(";" + visible, SqlInput.forMetadata(source, SqlInput.Dialect.SQLSERVER));
+        String metadata = SqlInput.forMetadata(source, SqlInput.Dialect.SQLSERVER);
+        assertTrue(metadata.startsWith(";with sample"));
+        assertFalse(metadata.contains("/*%if"));
+        assertTrue(metadata.contains("and id>0"));
     }
 
     @Test void readsCteMetadataWithoutCallingExecuteOrChangingTheCallersSource() throws Exception {
@@ -105,7 +114,8 @@ class SqlServerCteMetadataTest {
             }
             assertEquals(List.of(new ResultColumn("ITEM_ID", "java.lang.Long"), new ResultColumn("AMOUNT", "java.math.BigDecimal")),
                     new JdbcMetadataReader().read(guarded, source, "", TypeNameMappings.empty(), stage -> {}, SqlInput.Dialect.SQLSERVER));
-            assertEquals(";" + source, preparedSql.get());
+            assertTrue(preparedSql.get().startsWith(";WITH prices"));
+            assertFalse(preparedSql.get().contains("/*%if"));
             assertEquals(source, SqlInput.validate(source, SqlInput.Dialect.SQLSERVER));
         }
     }

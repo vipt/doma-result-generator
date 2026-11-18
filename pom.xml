@@ -25,6 +25,15 @@
     <maven.compiler.release>17</maven.compiler.release>
     <tycho.version>3.0.5</tycho.version>
   </properties>
+  <dependencies>
+    <dependency><groupId>org.seasar.doma</groupId><artifactId>doma-gen</artifactId><version>2.28.0</version>
+      <exclusions><exclusion><groupId>org.seasar.doma</groupId><artifactId>doma</artifactId></exclusion>
+      <exclusion><groupId>org.freemarker</groupId><artifactId>freemarker</artifactId></exclusion></exclusions>
+    </dependency>
+    <dependency><groupId>org.seasar.doma</groupId><artifactId>doma-core</artifactId><version>2.57.0</version></dependency>
+    <dependency><groupId>org.freemarker</groupId><artifactId>freemarker</artifactId><version>2.3.34</version></dependency>
+    <dependency><groupId>org.apache.ant</groupId><artifactId>ant</artifactId><version>1.10.18</version></dependency>
+  </dependencies>
   <repositories>
     <repository><id>eclipse-2023-12</id><layout>p2</layout><url>https://download.eclipse.org/releases/2023-12/</url></repository>
   </repositories>
@@ -34,6 +43,7 @@
       <plugin>
         <groupId>org.eclipse.tycho</groupId><artifactId>target-platform-configuration</artifactId><version>${tycho.version}</version>
         <configuration>
+          <pomDependencies>wrapAsBundle</pomDependencies>
           <environments>
             <environment><os>linux</os><ws>gtk</ws><arch>x86_64</arch></environment>
             <environment><os>win32</os><ws>win32</ws><arch>x86_64</arch></environment>

@@ -19,6 +19,9 @@ Require-Bundle: org.eclipse.core.runtime,
  org.eclipse.jdt.core,
  org.eclipse.jface.text,
  org.eclipse.jface,
- org.eclipse.swt
+ org.eclipse.swt,
+ io.github.domaresult.org.seasar.doma.doma-gen;bundle-version="[2.28,2.29)",
+ io.github.domaresult.org.seasar.doma.doma-core;bundle-version="[2.57,2.58)",
+ org.freemarker.freemarker;bundle-version="[2.3.34,2.4)"
 Import-Package: javax.lang.model
 

@@ -4,3 +4,7 @@ Copyright 2026 Doma Result Generator contributors
 This is an independent community project, not an official Doma or Eclipse product.
 Doma and Eclipse and their respective logos belong to their respective owners.
 No JDBC driver is included in this distribution.
+
+This distribution includes Doma-Gen, Doma Core, Apache FreeMarker, Apache Ant
+and Animal Sniffer Annotations. See THIRD_PARTY_NOTICES and the original
+license/notice resources in their bundled JARs.

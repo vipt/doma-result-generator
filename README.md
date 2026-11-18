@@ -162,7 +162,9 @@ WHERE 1=1
 /*%end*/
 ```
 
-Conditions and application Java code are not evaluated. The database describes the SQL with all filter bodies and test literals included; directive comments are retained. No result rows are fetched. Filters inside subqueries, CTEs and UNION branches are supported, provided the test SQL is a valid ordinary SELECT.
+SQL parsing and assembly use Doma's own `SqlParser` and `NodePreparedSqlBuilder`. Leading logical operators such as `WHERE AND ...` and `HAVING OR ...`, including inside subqueries, are removed by the official builder. No source or Metadata SQL edits are needed.
+
+Since no DAO invocation arguments are supplied, an adapter includes supported filter bodies and test literals without evaluating conditions or application Java code. Opaque strings, quoted identifiers and bind comments are protected and restored. The visible template retains its condition comments; JDBC receives the official builder's assembled SQL. No result rows are fetched. Filters inside subqueries, CTEs and UNION branches are supported.
 
 Conditions that change SELECT columns or FROM clauses, add/remove a WHERE or HAVING clause itself, `%else`, `%elseif`, `%for`, embedded variables (`/*# ... */`) and literal variables (`/*^ ... */`) still require a concrete SELECT in **Metadata SQL**. Each `%if`/`%end` pair must stay inside the same filter clause, query and parenthesis scope. Unsupported conditions and unmatched tags report a line number.
 
@@ -270,7 +272,9 @@ Tests cover join/aggregate metadata, empty results, no query execution, driver i
 
 [doma-gen](https://github.com/domaframework/doma-gen) is archived and directs users to [doma-codegen-plugin](https://github.com/domaframework/doma-codegen-plugin). Its compatibility matrix identifies CodeGen Plugin **2.x** as the Doma 2 line. The official tools already support generation from SQL results: see [ResultSetMetaReader](https://github.com/domaframework/doma-gen/blob/master/src/main/java/org/seasar/doma/extension/gen/ResultSetMetaReader.java) and the successor's [CodeGenDtoTask](https://github.com/domaframework/doma-codegen-plugin/blob/2.x/codegen/src/main/java/org/seasar/doma/gradle/codegen/task/CodeGenDtoTask.java).
 
-This prototype adds an Eclipse workflow with JDBC configuration, SQL selection, preview and Java-project integration. It does not call doma-gen directly: column metadata lookup, new-class generation and existing-class merging are implemented independently, without a Gradle/Ant runtime dependency. The official standard mapping was reviewed; TINYINT → Short and SQLXML support reflect that comparison. FLOAT → Double is an intentional conservative choice here. The official `ResultSetMetaReader` executes the SELECT; this prototype obtains prepared-statement metadata before execution and reports an error if that capability is unavailable. No official source code is bundled or copied into the plug-in. A future optional backend could reuse the official generator after addressing packaging and execution behavior.
+Generation now directly calls **doma-gen 2.28.0's `EntityDescFactory`, `EntityPropertyDescFactory` and `Generator`**. An Eclipse output template and adapters retain private fields, ownership tags, Java naming rules, type overrides and collision-aware imports. SQL parsing and assembly use **Doma Core 2.57.0's `SqlParser` and `NodePreparedSqlBuilder`**. These are actual runtime dependencies, shipped as OSGi bundles in the update site together with FreeMarker and their dependencies. A separate Gradle/Ant installation is not required; the plug-in does not launch the Ant task.
+
+Eclipse connection profiles, preview and existing-source merging remain the plug-in's responsibility. This is not a full DAO invocation: test values are used instead of runtime arguments, and an adapter includes supported filter bodies without evaluating application code. The official `ResultSetMetaReader` executes the SELECT, so column lookup continues to use JDBC prepared-statement metadata before execution. No execution fallback is performed. Existing type/naming compatibility is retained, including FLOAT → Double. See [THIRD_PARTY_NOTICES](plugin/THIRD_PARTY_NOTICES) for bundled dependency versions and licenses.
 
 ## Open-source publication
 

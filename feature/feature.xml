@@ -4,4 +4,10 @@
   <copyright>Copyright 2026 Doma Result Generator contributors</copyright>
   <license url="https://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0. See the included LICENSE file.</license>
   <plugin id="io.github.domaresult.eclipse" download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+  <plugin id="io.github.domaresult.org.seasar.doma.doma-gen" download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+  <plugin id="io.github.domaresult.org.seasar.doma.doma-core" download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+  <plugin id="org.freemarker.freemarker" download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+  <plugin id="io.github.domaresult.org.apache.ant.ant" download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+  <plugin id="io.github.domaresult.org.apache.ant.ant-launcher" download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+  <plugin id="io.github.domaresult.org.codehaus.mojo.animal-sniffer-annotations" download-size="0" install-size="0" version="0.0.0" unpack="false"/>
 </feature>

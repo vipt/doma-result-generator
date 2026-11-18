@@ -2,8 +2,11 @@
 package io.github.domaresult.core;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -34,7 +37,26 @@ public final class SqlInput {
     private static final String IDENTIFIER = "(?:[\\p{L}_][\\p{L}\\p{N}_$#]*|\"(?:[^\"]|\"\")+\"|`(?:[^`]|``)+`|\\[(?:[^\\]]|\\]\\])+\\])";
     private static final Pattern QUALIFIER = Pattern.compile(IDENTIFIER + "(?:\\." + IDENTIFIER + ")*");
     private record Replacement(int start, int end, String text) {}
-    private record Validated(String sql, boolean startsWithCte, boolean leadingSeparator) {}
+    private record Validated(String sql, String maskedSql, Map<String, String> originals, boolean startsWithCte) {}
+
+    /** Protects database-specific quoting/comments while Doma assembles the SQL structure. */
+    private static final class Masks {
+        final List<Replacement> replacements = new ArrayList<>();
+        final Map<String, String> originals = new LinkedHashMap<>();
+        private final String prefix;
+        Masks(String sql) {
+            String candidate = "__doma_result_opaque_";
+            while (sql.contains(candidate)) candidate += "_";
+            prefix = candidate;
+        }
+        void token(String sql, int start, int end, boolean literal, boolean comment) {
+            String key = prefix + originals.size() + "__";
+            if (literal) key = "'" + key + "'";
+            if (comment) key = "--" + key;
+            originals.put(key, sql.substring(start, end));
+            replacements.add(new Replacement(start, end, key + (comment ? "\n" : "")));
+        }
+    }
 
     private SqlInput() {}
 
@@ -49,14 +71,15 @@ public final class SqlInput {
     /** SQL Server's JDBC getMetaData prepends SET FMTONLY ON without a terminator. */
     static String forMetadata(String sql, Dialect dialect) {
         Validated validated = inspect(sql, dialect);
-        return dialect == Dialect.SQLSERVER && validated.startsWithCte() && !validated.leadingSeparator()
-                ? ";" + validated.sql() : validated.sql();
+        String prepared = DomaTestSqlBuilder.prepare(validated.maskedSql(), validated.originals());
+        return dialect == Dialect.SQLSERVER && validated.startsWithCte() ? ";" + prepared : prepared;
     }
 
     private static Validated inspect(String sql, Dialect dialect) {
         if (sql == null || sql.isBlank()) throw new GenerationException("Enter a SELECT statement.");
         List<String> words = new ArrayList<>();
         List<Replacement> replacements = new ArrayList<>();
+        Masks masks = new Masks(sql);
         SqlConditionContext conditions = new SqlConditionContext(sql);
         int terminal = -1;
         boolean started = false, leadingSeparator = false;
@@ -96,12 +119,13 @@ public final class SqlInput {
                 } else if (comment.startsWith("#") || comment.startsWith("^")) {
                     throw new GenerationException("Replace embedded or literal Doma directives with a concrete SELECT in Metadata SQL. "
                             + "Filter-only %if/%end conditions and bind comments with test literals (/* id */0) are supported.");
-                }
+                } else masks.token(sql, start, i, false, true);
                 continue;
             }
             if (terminal >= 0) throw new GenerationException("Only one SELECT statement is allowed.");
             if (c == ';' && dialect == Dialect.SQLSERVER && !started) {
                 leadingSeparator = true;
+                masks.replacements.add(new Replacement(i, i + 1, ""));
                 i++;
                 continue;
             }
@@ -109,6 +133,7 @@ public final class SqlInput {
             if (c == ';') { conditions.symbol(c, i); terminal = i++; continue; }
             if (c == '?') throw new GenerationException("Replace JDBC parameters (?) with typed test literals.");
             if (c == '\'' || c == '"' || c == '`' || c == '[') {
+                int quotedStart = i;
                 char close = c == '[' ? ']' : c;
                 boolean escape = c == '\'' && (dialect.backslashStrings || dialect.postgresEscapes && i > 0
                         && (sql.charAt(i - 1) == 'e' || sql.charAt(i - 1) == 'E')
@@ -123,6 +148,7 @@ public final class SqlInput {
                     }
                 }
                 if (!closed) throw new GenerationException("Unclosed SQL string or quoted identifier.");
+                masks.token(sql, quotedStart, i, c == '\'' || c == '"' && dialect == Dialect.MYSQL, false);
                 conditions.atom();
                 continue;
             }
@@ -132,7 +158,10 @@ public final class SqlInput {
                     String delimiter = matcher.group();
                     int end = sql.indexOf(delimiter, matcher.end());
                     if (end < 0) throw new GenerationException("Unclosed dollar-quoted string.");
-                    i = end + delimiter.length(); conditions.atom(); continue;
+                    int quotedStart = i;
+                    i = end + delimiter.length();
+                    masks.token(sql, quotedStart, i, true, false);
+                    conditions.atom(); continue;
                 }
             }
             if (Character.isLetter(c) || c == '_') {
@@ -157,12 +186,19 @@ public final class SqlInput {
             throw new GenerationException("A leading statement separator is supported only before a SQL Server WITH ... SELECT.");
         }
         if (terminal >= 0) replacements.add(new Replacement(terminal, terminal + 1, ""));
+        List<Replacement> maskedReplacements = new ArrayList<>(replacements);
+        maskedReplacements.addAll(masks.replacements);
+        return new Validated(replace(sql, replacements), replace(sql, maskedReplacements), masks.originals, startsWithCte);
+    }
+
+    private static String replace(String sql, List<Replacement> replacements) {
+        replacements.sort(Comparator.comparingInt(Replacement::start));
         StringBuilder prepared = new StringBuilder(sql);
         for (int index = replacements.size() - 1; index >= 0; index--) {
             Replacement replacement = replacements.get(index);
             prepared.replace(replacement.start, replacement.end, replacement.text);
         }
-        return new Validated(prepared.toString(), startsWithCte, leadingSeparator);
+        return prepared.toString();
     }
 
     private static String expansion(String argument) {
