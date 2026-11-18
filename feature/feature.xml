@@ -10,5 +10,4 @@
   <plugin id="io.github.domaresult.org.apache.ant.ant" download-size="0" install-size="0" version="0.0.0" unpack="false"/>
   <plugin id="io.github.domaresult.org.apache.ant.ant-launcher" download-size="0" install-size="0" version="0.0.0" unpack="false"/>
   <plugin id="io.github.domaresult.org.codehaus.mojo.animal-sniffer-annotations" download-size="0" install-size="0" version="0.0.0" unpack="false"/>
-  <plugin id="com.google.gson" download-size="0" install-size="0" version="0.0.0" unpack="false"/>
 </feature>

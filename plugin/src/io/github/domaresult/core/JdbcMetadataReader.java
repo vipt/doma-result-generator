@@ -1,107 +1,114 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 package io.github.domaresult.core;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSetMetaData;
-import java.sql.SQLException;
-import java.sql.Types;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
+import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Consumer;
+import javax.sql.DataSource;
+import org.seasar.doma.extension.gen.GenException;
+import org.seasar.doma.extension.gen.ResultSetMetaReader;
+import org.seasar.doma.extension.gen.dialect.GenDialect;
+import org.seasar.doma.extension.gen.dialect.GenDialectRegistry;
+import org.seasar.doma.extension.gen.dialect.StandardGenDialect;
 
+/** Uses doma-gen's SQL-result reader, without a Doma runtime parser or evaluator. */
 public final class JdbcMetadataReader {
-    /** Does not execute the query and does not close the caller's connection. */
     public List<ResultColumn> read(Connection connection, String sql) throws SQLException {
         return read(connection, sql, "", TypeNameMappings.empty());
     }
-
-    public List<ResultColumn> read(Connection connection, String sql, String qualifiedClassName,
-            TypeNameMappings mappings) throws SQLException {
-        return read(connection, sql, qualifiedClassName, mappings, stage -> {});
+    public List<ResultColumn> read(Connection connection, String sql, String className, TypeNameMappings mappings) throws SQLException {
+        return read(connection, sql, className, mappings, stage -> {});
     }
-
-    public List<ResultColumn> read(Connection connection, String sql, String qualifiedClassName,
-            TypeNameMappings mappings, Consumer<JdbcErrorDetails.Stage> progress) throws SQLException {
-        return read(connection, sql, qualifiedClassName, mappings, progress, SqlInput.Dialect.STANDARD);
+    public List<ResultColumn> read(Connection connection, String sql, String className, TypeNameMappings mappings,
+            Consumer<JdbcErrorDetails.Stage> progress) throws SQLException {
+        return read(connection, sql, className, mappings, progress, SqlInput.Dialect.STANDARD);
     }
-
-    public List<ResultColumn> read(Connection connection, String sql, String qualifiedClassName,
-            TypeNameMappings mappings, Consumer<JdbcErrorDetails.Stage> progress, SqlInput.Dialect dialect) throws SQLException {
-        return read(connection, sql, qualifiedClassName, mappings, progress, dialect, new PreviewExecution.Cancellation());
+    public List<ResultColumn> read(Connection connection, String sql, String className, TypeNameMappings mappings,
+            Consumer<JdbcErrorDetails.Stage> progress, SqlInput.Dialect syntax) throws SQLException {
+        return read(connection, sql, className, mappings, progress, syntax, new PreviewExecution.Cancellation());
     }
-
-    public List<ResultColumn> read(Connection connection, String sql, String qualifiedClassName,
-            TypeNameMappings mappings, Consumer<JdbcErrorDetails.Stage> progress, SqlInput.Dialect dialect,
+    public List<ResultColumn> read(Connection connection, String sql, String className, TypeNameMappings mappings,
+            Consumer<JdbcErrorDetails.Stage> progress, SqlInput.Dialect syntax,
             PreviewExecution.Cancellation cancellation) throws SQLException {
-        cancellation.check();
-        DomaPreparedSelect prepared = SqlInput.prepare(sql, dialect, java.util.Map.of(), getClass().getClassLoader(), "");
-        return read(connection, prepared, qualifiedClassName, mappings, progress, cancellation);
+        return read(connection, sql, className, mappings, progress, syntax, cancellation, "");
     }
-
-    public List<ResultColumn> read(Connection connection, DomaPreparedSelect prepared, String qualifiedClassName,
-            TypeNameMappings mappings, Consumer<JdbcErrorDetails.Stage> progress,
-            PreviewExecution.Cancellation cancellation) throws SQLException {
+    public List<ResultColumn> read(Connection connection, String sql, String className, TypeNameMappings mappings,
+            Consumer<JdbcErrorDetails.Stage> progress, SqlInput.Dialect syntax,
+            PreviewExecution.Cancellation cancellation, String jdbcUrl) throws SQLException {
         cancellation.check();
-        progress.accept(JdbcErrorDetails.Stage.PREPARING_SQL);
-        PreparedStatement statement = connection.prepareStatement(prepared.sql());
-        try (statement) {
-            cancellation.track(statement);
-            prepared.bind(statement);
+        String query = SqlInput.validate(sql, syntax);
+        GenDialect dialect = dialect(syntax, jdbcUrl);
+        // The official reader owns this borrowed handle; the dialog owns the real connection.
+        Connection borrowed = (Connection) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{Connection.class}, (p, method, args) -> {
+            if (method.getName().equals("close")) return null;
+            if (method.getName().equals("prepareStatement")) {
+                cancellation.check(); progress.accept(JdbcErrorDetails.Stage.PREPARING_SQL);
+                PreparedStatement statement = (PreparedStatement) invoke(method, connection, args);
+                try { cancellation.track(statement); }
+                catch (RuntimeException failure) { statement.close(); cancellation.release(statement); throw failure; }
+                return Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{PreparedStatement.class}, (s, call, values) -> {
+                    if (call.getName().equals("executeQuery")) {
+                        cancellation.check(); progress.accept(JdbcErrorDetails.Stage.EXECUTING_SELECT);
+                        ResultSet result = (ResultSet) invoke(call, statement, values);
+                        return Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{ResultSet.class}, (r, operation, parameters) -> {
+                            if (operation.getName().equals("close")) return invoke(operation, result, parameters);
+                            cancellation.check();
+                            if (operation.getName().equals("getMetaData")) progress.accept(JdbcErrorDetails.Stage.READING_COLUMNS);
+                            return invoke(operation, result, parameters);
+                        });
+                    }
+                    if (call.getName().equals("close")) {
+                        try { return invoke(call, statement, values); }
+                        finally { cancellation.release(statement); }
+                    }
+                    return invoke(call, statement, values);
+                });
+            }
+            return invoke(method, connection, args);
+        });
+        DataSource source = (DataSource) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{DataSource.class}, (p, method, args) -> {
+            if (method.getName().equals("getConnection") && (args == null || args.length == 0)) return borrowed;
+            throw new SQLFeatureNotSupportedException("This data source exposes only the dialog connection.");
+        });
+        try {
+            var table = new ResultSetMetaReader(dialect, source).read(query);
             cancellation.check();
-            progress.accept(JdbcErrorDetails.Stage.READING_COLUMNS);
-            ResultSetMetaData metadata = statement.getMetaData();
+            var metadata = table.getColumnMetas();
+            List<String> fields = JavaNames.fieldNames(metadata.stream().map(column -> column.getName()).toList());
+            List<ResultColumn> result = new ArrayList<>();
+            for (int i = 0; i < metadata.size(); i++) {
+                cancellation.check();
+                var column = metadata.get(i);
+                var override = mappings.resolve(className, fields.get(i));
+                String type = override.isPresent() ? override.get() : dialect.getMappedPropertyClassName(column);
+                if (type == null) throw new MetadataException("Unsupported JDBC type " + column.getSqlType()
+                        + " for column '" + column.getName() + "'. Use name.properties or an explicit CAST.");
+                result.add(new ResultColumn(column.getName(), type));
+            }
+            return List.copyOf(result);
+        } catch (GenException e) {
             cancellation.check();
-            if (metadata == null) {
-                throw new MetadataException("This driver cannot describe a SELECT before execution. "
-                        + "Try a newer JDBC driver; query execution fallback is not supported.");
+            for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
+                if (cause instanceof SQLException failure) throw failure;
             }
-            List<String> labels = new ArrayList<>();
-            for (int i = 1; i <= metadata.getColumnCount(); i++) {
-                cancellation.check();
-                String label = metadata.getColumnLabel(i);
-                if (label == null || label.isBlank()) label = metadata.getColumnName(i);
-                labels.add(label);
-            }
-            List<String> fields = JavaNames.fieldNames(labels);
-            List<ResultColumn> columns = new ArrayList<>();
-            for (int i = 1; i <= labels.size(); i++) {
-                cancellation.check();
-                String label = labels.get(i - 1);
-                int jdbcType = metadata.getColumnType(i);
-                var override = mappings.resolve(qualifiedClassName, fields.get(i - 1));
-                String type = override.isPresent() ? override.get()
-                        : javaType(jdbcType, label, metadata.getColumnTypeName(i));
-                columns.add(new ResultColumn(label, type));
-            }
-            progress.accept(JdbcErrorDetails.Stage.CLOSING_STATEMENT);
-            return List.copyOf(columns);
-        } finally { cancellation.release(statement); }
+            throw new GenerationException("Official doma-gen could not read the SELECT result. Check directly executable Metadata SQL and supported column types.");
+        }
     }
-
-    private static String javaType(int jdbcType, String label, String databaseType) throws SQLException {
-        return switch (jdbcType) {
-            case Types.BOOLEAN, Types.BIT -> "java.lang.Boolean";
-            // Like the official generator, use Short to also represent unsigned TINYINT.
-            case Types.TINYINT -> "java.lang.Short";
-            case Types.SMALLINT -> "java.lang.Short";
-            case Types.INTEGER -> "java.lang.Integer";
-            case Types.BIGINT -> "java.lang.Long";
-            case Types.REAL -> "java.lang.Float";
-            case Types.FLOAT, Types.DOUBLE -> "java.lang.Double";
-            case Types.NUMERIC, Types.DECIMAL -> "java.math.BigDecimal";
-            case Types.CHAR, Types.VARCHAR, Types.LONGVARCHAR, Types.NCHAR,
-                    Types.NVARCHAR, Types.LONGNVARCHAR -> "java.lang.String";
-            case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY -> "byte[]";
-            case Types.DATE -> "java.time.LocalDate";
-            case Types.TIME -> "java.time.LocalTime";
-            case Types.TIMESTAMP -> "java.time.LocalDateTime";
-            case Types.BLOB -> "java.sql.Blob";
-            case Types.CLOB -> "java.sql.Clob";
-            case Types.NCLOB -> "java.sql.NClob";
-            case Types.SQLXML -> "java.sql.SQLXML";
-            default -> throw new MetadataException("Unsupported type for column '" + label + "': "
-                    + databaseType + " (JDBC " + jdbcType + "). Use an explicit CAST to a supported JDBC type.");
+    private static Object invoke(java.lang.reflect.Method method, Object target, Object[] args) throws Throwable {
+        try { return method.invoke(target, args); }
+        catch (InvocationTargetException e) { throw e.getCause(); }
+    }
+    private static GenDialect dialect(SqlInput.Dialect syntax, String url) {
+        String name = switch (syntax) {
+            case SQLSERVER -> "mssql"; case POSTGRESQL, POSTGRESQL_LEGACY -> "postgres";
+            case MYSQL, MYSQL_NO_BACKSLASH -> "mysql"; default -> "standard";
         };
+        String value = url.toLowerCase(Locale.ROOT);
+        for (String candidate : List.of("oracle", "h2", "hsqldb", "db2")) if (value.startsWith("jdbc:" + candidate + ":")) name = candidate;
+        return name.equals("standard") ? new StandardGenDialect() : GenDialectRegistry.lookup(name);
     }
 }

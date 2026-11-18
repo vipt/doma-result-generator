@@ -76,14 +76,14 @@ class SqlInputDialectTest {
         assertEquals(SqlInput.Dialect.STANDARD, SqlInput.Dialect.fromJdbcUrl("jdbc:oracle:thin:@localhost/service"));
     }
 
-    @Test void describesForUpdateWithoutExecutingSelect() throws Exception {
+    @Test void describesForUpdateWithTheOfficialReader() throws Exception {
         try (var connection = DriverManager.getConnection("jdbc:h2:mem:" + UUID.randomUUID())) {
             assertEquals(List.of(new ResultColumn("ID", "java.lang.Integer")),
                     new JdbcMetadataReader().read(connection, "SELECT 1 AS id FOR UPDATE"));
         }
     }
 
-    @Test void metadataReaderPreservesTheChosenDialectAndDoesNotExecuteTheStatement() throws Exception {
+    @Test void officialReaderPreservesTheChosenSqlDialect() throws Exception {
         String sql = "SELECT 'it\\'s' AS label";
         ResultSetMetaData metadata = (ResultSetMetaData) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[] { ResultSetMetaData.class },
                 (proxy, method, args) -> switch (method.getName()) {
@@ -91,12 +91,17 @@ class SqlInputDialectTest {
                     case "getColumnLabel" -> "LABEL";
                     case "getColumnType" -> Types.VARCHAR;
                     case "getColumnTypeName" -> "VARCHAR";
+                    case "getTableName" -> "";
+                    case "getPrecision", "getScale" -> 0;
                     default -> throw new UnsupportedOperationException(method.getName());
                 });
         PreparedStatement statement = (PreparedStatement) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[] { PreparedStatement.class },
                 (proxy, method, args) -> {
-                    if (method.getName().startsWith("execute")) fail("SELECT must not be executed");
-                    if (method.getName().equals("getMetaData")) return metadata;
+                    if (method.getName().equals("executeQuery")) return Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{java.sql.ResultSet.class}, (r, call, values) -> {
+                        if (call.getName().equals("getMetaData")) return metadata;
+                        if (call.getName().equals("close")) return null;
+                        throw new UnsupportedOperationException(call.getName());
+                    });
                     if (method.getName().equals("close")) return null;
                     throw new UnsupportedOperationException(method.getName());
                 });

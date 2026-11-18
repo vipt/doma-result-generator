@@ -84,11 +84,15 @@ class JdbcErrorDetailsTest {
         assertTrue(JdbcErrorDetails.describe(error, stage.get(), true).summary().contains("ORA-00942"));
     }
 
-    @Test void metadataFailureKeepsItsOracleCodeAndDoesNotExecuteTheQuery() {
+    @Test void metadataFailureKeepsItsOracleCodeAfterOfficialSelect() {
         var stage = new AtomicReference<>(JdbcErrorDetails.Stage.CONNECTING);
         PreparedStatement statement = (PreparedStatement) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[] { PreparedStatement.class },
                 (proxy, method, args) -> {
-                    if (method.getName().startsWith("execute")) fail("The query must not be executed");
+                    if (method.getName().equals("executeQuery")) return Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{java.sql.ResultSet.class}, (r, call, values) -> {
+                        if (call.getName().equals("getMetaData")) throw new SQLException("private message", "72000", 17023);
+                        if (call.getName().equals("close")) return null;
+                        throw new UnsupportedOperationException(call.getName());
+                    });
                     if (method.getName().equals("getMetaData")) throw new SQLException("private message", "72000", 17023);
                     if (method.getName().equals("close")) return null;
                     throw new UnsupportedOperationException(method.getName());

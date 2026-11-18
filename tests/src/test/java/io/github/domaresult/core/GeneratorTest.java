@@ -35,14 +35,12 @@ class GeneratorTest {
 
     @Test void joinMetadataUsesResultAliasesAndTypes() throws Exception {
         try (Connection connection = database()) {
-            var columns = new JdbcMetadataReader().read(connection, SqlInput.prepare("""
+            var columns = new JdbcMetadataReader().read(connection, """
                     select e.id as employee_id, e.name as employee_name, d.name as department_name,
                            e.salary, e.hired_on, count(*) over() as total_count
                     from employee e left join department d on d.id = e.department_id
                     where e.id = /* employeeId */11;
-                    """, SqlInput.Dialect.STANDARD,
-                    java.util.Map.of("employeeId", new org.seasar.doma.internal.expr.Value(Long.class, 11L)), getClass().getClassLoader(), ""),
-                    "", TypeNameMappings.empty(), stage -> {}, new PreviewExecution.Cancellation());
+                    """);
             assertEquals(List.of(
                     new ResultColumn("EMPLOYEE_ID", "java.lang.Long"),
                     new ResultColumn("EMPLOYEE_NAME", "java.lang.String"),
@@ -265,13 +263,13 @@ class GeneratorTest {
         assertNotNull(DriverManager.getDriver("jdbc:h2:mem:stillAvailable"));
     }
 
-    @Test void metadataLookupDoesNotExecuteSelect() throws Exception {
+    @Test void officialReaderExecutesSelectOnceToObtainResultMetadata() throws Exception {
         try (Connection connection = database()) {
             try (var statement = connection.createStatement()) { statement.execute("create sequence sample_sequence start with 1"); }
             new JdbcMetadataReader().read(connection, "select next value for sample_sequence as sequence_value");
             try (var statement = connection.createStatement(); var result = statement.executeQuery("select next value for sample_sequence")) {
                 assertTrue(result.next());
-                assertEquals(1, result.getInt(1));
+                assertEquals(2, result.getInt(1));
             }
         }
     }
@@ -285,7 +283,6 @@ class GeneratorTest {
 
     @ParameterizedTest
     @ValueSource(strings = { "delete from employee", "select 1; delete from employee", "select ?",
-            "select 1 /*%if enabled*/ where id = 1 /*%end*/",
             "select 'unclosed", "select /* broken",
             "with x as (delete from employee returning *) select * from x", "select id into example from employee", "" })
     void rejectsUnresolvedOrNonSelectStatements(String sql) {

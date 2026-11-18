@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
 /** Extracts diagnostic codes without exposing raw driver messages or connection details. */
 public final class JdbcErrorDetails {
     public enum Stage {
-        EVALUATING_TEMPLATE("evaluating the Doma template", "Check Arguments and the project's compiled classes and dependencies."),
+        EXECUTING_SELECT("executing the SELECT with doma-gen", "Check that Metadata SQL is directly executable with this JDBC connection."),
         LOADING_DRIVER("loading the JDBC driver", "Check driver JARs, the driver class and Java compatibility."),
         CONNECTING("connecting to the database", "Check the JDBC URL, credentials and database service."),
         PREPARING_SQL("preparing the SELECT", "Check Metadata SQL and the current schema and privileges of this JDBC session."),
@@ -72,10 +72,10 @@ public final class JdbcErrorDetails {
         if (!oracleCodes.isEmpty()) details += "\n\nOracle reference: https://docs.oracle.com/error-help/db/"
                 + oracleCodes.iterator().next().toLowerCase(Locale.ROOT) + "/";
         if (!oracleDriver && vendorCodes.contains("319") && states.contains("S0001")
-                && (stage == Stage.PREPARING_SQL || stage == Stage.READING_COLUMNS)) {
+                && (stage == Stage.PREPARING_SQL || stage == Stage.EXECUTING_SELECT || stage == Stage.READING_COLUMNS)) {
             details += "\n\nSQL Server 319: check WITH/CTE syntax and the preceding statement separator. "
                     + "Select Automatic (JDBC URL) or SQL Server under Metadata SQL > SQL syntax. "
-                    + "The generator supplies the leading CTE separator for JDBC metadata lookup; the saved SQL is unchanged.";
+                    + "Official doma-gen executes the SELECT directly; check the CTE SQL itself. The saved SQL is unchanged.";
         }
         return new Info(summary, details);
     }

@@ -82,14 +82,13 @@ class PreviewExecutionTest {
         }
     }
 
-    @Test void abortRunsIndependentlyOfABlockedStatementCancelAndDoesNotExecuteSql() throws Exception {
+    @Test void abortRunsIndependentlyOfABlockedOfficialSelectAndStatementCancel() throws Exception {
         CountDownLatch reading = new CountDownLatch(1), releaseRead = new CountDownLatch(1), releaseCancel = new CountDownLatch(1);
         CountDownLatch cancelStarted = new CountDownLatch(1), aborted = new CountDownLatch(1);
         AtomicBoolean canceled = new AtomicBoolean(), correctLoader = new AtomicBoolean();
         ClassLoader driverLoader = new ClassLoader() {};
         PreparedStatement statement = proxy(PreparedStatement.class, (p, method, args) -> {
-            if (method.getName().startsWith("execute")) fail("Metadata preview must not execute SQL");
-            if (method.getName().equals("getMetaData")) { reading.countDown(); awaitIgnoringInterrupts(releaseRead); return null; }
+            if (method.getName().equals("executeQuery")) { reading.countDown(); awaitIgnoringInterrupts(releaseRead); throw new CancellationException(); }
             if (method.getName().equals("cancel")) { cancelStarted.countDown(); awaitIgnoringInterrupts(releaseCancel); return null; }
             if (method.getName().equals("close")) return null;
             throw new UnsupportedOperationException(method.getName());

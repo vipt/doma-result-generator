@@ -26,7 +26,6 @@
     <tycho.version>3.0.5</tycho.version>
   </properties>
   <dependencies>
-    <dependency><groupId>com.google.code.gson</groupId><artifactId>gson</artifactId><version>2.13.2</version><exclusions><exclusion><groupId>com.google.errorprone</groupId><artifactId>error_prone_annotations</artifactId></exclusion></exclusions></dependency>
     <dependency><groupId>org.seasar.doma</groupId><artifactId>doma-gen</artifactId><version>2.28.0</version>
       <exclusions><exclusion><groupId>org.seasar.doma</groupId><artifactId>doma</artifactId></exclusion>
       <exclusion><groupId>org.freemarker</groupId><artifactId>freemarker</artifactId></exclusion></exclusions>

@@ -3,17 +3,13 @@ package io.github.domaresult.core;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
-import org.seasar.doma.internal.expr.Value;
-import org.seasar.doma.internal.expr.util.ExpressionUtil;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Validates SELECT input and protects database quoting while Doma evaluates the template. */
+/** SELECT-only input check; SQL comments and Doma directives are not interpreted. */
 public final class SqlInput {
     public enum Dialect {
         STANDARD(false, false, false), POSTGRESQL(true, false, true), MYSQL(false, true, false),
@@ -36,61 +32,20 @@ public final class SqlInput {
             "ALTER", "DROP", "TRUNCATE", "CALL", "EXEC", "EXECUTE", "INTO", "GRANT", "REVOKE");
     private static final Pattern DOLLAR = Pattern.compile("\\$(?:[a-zA-Z_][a-zA-Z_0-9]*)?\\$");
     private record Replacement(int start, int end, String text) {}
-    private record Validated(String sql, String maskedSql, Map<String, String> originals, boolean startsWithCte) {}
-
-    /** Protects database-specific quoting/comments while Doma assembles the SQL structure. */
-    private static final class Masks {
-        final List<Replacement> replacements = new ArrayList<>();
-        final Map<String, String> originals = new LinkedHashMap<>();
-        private final String prefix;
-        Masks(String sql) {
-            String candidate = "__doma_result_" + java.util.UUID.randomUUID().toString().replace("-", "") + "_";
-            while (sql.contains(candidate)) candidate += "_";
-            prefix = candidate;
-        }
-        void token(String sql, int start, int end, boolean literal, boolean comment) {
-            String key = prefix + originals.size() + "__";
-            if (literal) key = "'" + key + "'";
-            if (comment) key = "/*!" + key + "\n".repeat((int) sql.substring(start, end).chars().filter(c -> c == '\n').count()) + "*/";
-            originals.put(key, sql.substring(start, end));
-            replacements.add(new Replacement(start, end, key));
-        }
-    }
-
     private SqlInput() {}
 
     public static String validate(String sql) {
         return validate(sql, Dialect.STANDARD);
     }
 
-    public static String validate(String sql, Dialect dialect) {
-        Validated validated = inspect(sql, dialect);
-        DomaSql.parse(validated.maskedSql());
-        return validated.sql();
-    }
+    public static String validate(String sql, Dialect dialect) { return inspect(sql, dialect); }
 
-    public static DomaPreparedSelect prepare(String sql, Dialect dialect, Map<String, Value> arguments,
-            ClassLoader loader, String jdbcUrl) {
-        Validated validated = inspect(sql, dialect);
-        return DomaSql.prepare(validated.maskedSql(), validated.originals(), arguments, loader, dialect, jdbcUrl);
-    }
+    static String forMetadata(String sql, Dialect dialect) { return validate(sql, dialect); }
 
-    static String forMetadata(String sql, Dialect dialect) {
-        return prepare(sql, dialect, Map.of(), SqlInput.class.getClassLoader(), "").sql();
-    }
-
-    static String jdbcSql(String sql, Dialect dialect) {
-        Validated validated = inspect(sql, dialect, true);
-        return dialect == Dialect.SQLSERVER && validated.startsWithCte() ? ";" + validated.sql() : validated.sql();
-    }
-
-    private static Validated inspect(String sql, Dialect dialect) { return inspect(sql, dialect, false); }
-
-    private static Validated inspect(String sql, Dialect dialect, boolean boundSql) {
+    private static String inspect(String sql, Dialect dialect) {
         if (sql == null || sql.isBlank()) throw new GenerationException("Enter a SELECT statement.");
         List<String> words = new ArrayList<>();
         List<Replacement> replacements = new ArrayList<>();
-        Masks masks = new Masks(sql);
         int terminal = -1;
         boolean started = false, leadingSeparator = false;
         for (int i = 0; i < sql.length();) {
@@ -111,13 +66,6 @@ public final class SqlInput {
                     else i++;
                 }
                 if (depth > 0) throw new GenerationException("Unclosed SQL comment.");
-                String comment = sql.substring(start + 2, i - 2).strip();
-                char marker = start + 2 < sql.length() ? sql.charAt(start + 2) : '*';
-                if (comment.startsWith("%") || comment.startsWith("#") || comment.startsWith("^")
-                        || ExpressionUtil.isExpressionIdentifierStart(marker)) {
-                    if (terminal >= 0) throw new GenerationException("Only one SELECT statement is allowed.");
-                    // All Doma expressions are left to the unmodified official parser and builder.
-                } else masks.token(sql, start, i, false, true);
                 continue;
             }
             if (terminal >= 0 && c == ';') {
@@ -128,13 +76,12 @@ public final class SqlInput {
             if (terminal >= 0) throw new GenerationException("Only one SELECT statement is allowed.");
             if (c == ';' && dialect == Dialect.SQLSERVER && !started) {
                 leadingSeparator = true;
-                masks.replacements.add(new Replacement(i, i + 1, ""));
                 i++;
                 continue;
             }
             started = true;
             if (c == ';') { terminal = i++; continue; }
-            if (c == '?' && !boundSql) throw new GenerationException("Use Doma bind comments with typed values from Arguments instead of JDBC parameters (?).");
+            if (c == '?') throw new GenerationException("Use concrete SQL values instead of JDBC parameters (?). doma-gen does not take DAO arguments.");
             if (c == '\'' || c == '"' || c == '`' || c == '[') {
                 int quotedStart = i;
                 char close = c == '[' ? ']' : c;
@@ -151,7 +98,6 @@ public final class SqlInput {
                     }
                 }
                 if (!closed) throw new GenerationException("Unclosed SQL string or quoted identifier.");
-                masks.token(sql, quotedStart, i, c == '\'' || c == '"' && dialect == Dialect.MYSQL, false);
                 continue;
             }
             if (c == '$') {
@@ -162,7 +108,6 @@ public final class SqlInput {
                     if (end < 0) throw new GenerationException("Unclosed dollar-quoted string.");
                     int quotedStart = i;
                     i = end + delimiter.length();
-                    masks.token(sql, quotedStart, i, true, false);
                     continue;
                 }
             }
@@ -186,9 +131,7 @@ public final class SqlInput {
             throw new GenerationException("A leading statement separator is supported only before a SQL Server WITH ... SELECT.");
         }
         if (terminal >= 0) replacements.add(new Replacement(terminal, terminal + 1, ""));
-        List<Replacement> maskedReplacements = new ArrayList<>(replacements);
-        maskedReplacements.addAll(masks.replacements);
-        return new Validated(replace(sql, replacements), replace(sql, maskedReplacements), masks.originals, startsWithCte);
+        return replace(sql, replacements);
     }
 
     private static String replace(String sql, List<Replacement> replacements) {
