@@ -26,6 +26,16 @@ public class OfficialBackendRuntimeTest {
         assertTrue(sql.contains("1=1"));
     }
 
+    @Test public void projectionBranchesAreAssembledSeparatelyInsideThePluginClassLoader() {
+        String source = "SELECT /*%if option*/ CASE WHEN 1=1 THEN 'a' ELSE 'b' END /*%else*/ 'c' /*%end*/ AS name";
+        List<String> variants = SqlInput.metadataVariants(source, SqlInput.Dialect.SQLSERVER);
+        assertEquals(2, variants.size());
+        assertTrue(variants.get(0).contains("CASE WHEN"));
+        assertFalse(variants.get(1).contains("CASE WHEN"));
+        assertTrue(variants.get(1).contains("'c'"));
+        assertEquals(source, SqlInput.validate(source, SqlInput.Dialect.SQLSERVER));
+    }
+
     @Test public void officialLibrariesWorkWhileTheJdbcDriverOwnsTheContextClassLoader() throws Exception {
         Thread thread = Thread.currentThread();
         ClassLoader previous = thread.getContextClassLoader();

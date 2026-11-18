@@ -66,31 +66,36 @@ class SqlInputConditionTest {
             "SELECT @where AS value FROM #example WHERE 1=1 /*%if active*/ AND @having = 0 /*%end*/",
             "SELECT id FROM employee WHERE 1=1 /*%if active*/ AND note = 'ORDER BY; /*%else*/' /*%end*/",
             "SELECT id FROM employee WHERE 1=1 /*%if active*/ AND id > 0 /* GROUP BY */ -- UNION\n /*%end*/",
-            "SELECT id FROM employee WHERE 1=1 /*%if active*/ /*%if nested*/ AND id>0 /*%end*/ /*%end*/"
+            "SELECT id FROM employee WHERE 1=1 /*%if active*/ /*%if nested*/ AND id>0 /*%end*/ /*%end*/",
+            "SELECT /*%if active*/ id, /*%end*/ name FROM employee",
+            "SELECT id FROM employee WHERE EXISTS (SELECT /*%if active*/ id /*%end*/ FROM department)",
+            "SELECT @where /*%if active*/ ,id /*%end*/ FROM employee",
+            "SELECT employee.where /*%if active*/ ,id /*%end*/ FROM employee",
+            "SELECT id FROM employee WHERE 1=1 /*%if active*/ AND id>0 /*%else*/ AND id<0 /*%end*/",
+            "SELECT id FROM employee WHERE 1=1 /*%if active*/ AND id>0 /*%elseif other*/ AND id<0 /*%end*/",
+            "SELECT id FROM /*%if active*/ employee /*%end*/",
+            "SELECT id FROM employee WHERE id=1 ORDER BY /*%if active*/ id /*%end*/",
+            "SELECT id FROM employee WHERE 1=1 /*%if active*/ AND id>0 LIMIT 1 /*%end*/",
+            "SELECT id FROM #where /*%if active*/ JOIN department ON 1=1 /*%end*/"
     })
-    void retainsFixedProjectionFilterSql(String sql) {
+    void retainsSupportedTemplatesForMetadataValidation(String sql) {
         assertEquals(sql, SqlInput.validate(sql, SqlInput.Dialect.SQLSERVER));
     }
 
     @ParameterizedTest @ValueSource(strings = {
-            "SELECT /*%if active*/ id, /*%end*/ name FROM employee",
-            "SELECT id FROM /*%if active*/ employee /*%end*/",
             "SELECT id FROM employee /*%if active*/ WHERE id=1 /*%end*/",
-            "SELECT id FROM employee WHERE id=1 ORDER BY /*%if active*/ id /*%end*/",
             "SELECT id FROM employee WHERE 1=1 /*%if active*/ AND id>0 ORDER BY id /*%end*/",
             "SELECT id FROM employee WHERE 1=1 /*%if active*/ AND id>0 GROUP BY id /*%end*/",
             "SELECT id FROM employee WHERE 1=1 /*%if active*/ UNION ALL SELECT id FROM employee /*%end*/",
-            "SELECT id FROM employee WHERE 1=1 /*%if active*/ AND id>0 LIMIT 1 /*%end*/",
             "SELECT id FROM employee WHERE 1=1 /*%if active*/ AND id>0 FOR UPDATE /*%end*/",
             "SELECT id FROM employee WHERE 1=1 /*%if active*/ AND id>0 OPTION (RECOMPILE) /*%end*/",
             "SELECT id FROM employee WHERE 1=1 /*%if active*/ AND id>0 HAVING COUNT(*)>1 /*%end*/",
             "SELECT id FROM employee WHERE EXISTS (SELECT id FROM department /*%if active*/ WHERE id=1 /*%end*/)",
-            "SELECT id FROM employee WHERE EXISTS (SELECT /*%if active*/ id /*%end*/ FROM department)",
-            "SELECT @where /*%if active*/ ,id /*%end*/ FROM employee",
-            "SELECT employee.where /*%if active*/ ,id /*%end*/ FROM employee",
-            "SELECT id FROM #where /*%if active*/ JOIN department ON 1=1 /*%end*/",
-            "SELECT id FROM employee WHERE 1=1 /*%if active*/ AND id>0 /*%else*/ AND id<0 /*%end*/",
-            "SELECT id FROM employee WHERE 1=1 /*%if active*/ AND id>0 /*%elseif other*/ AND id<0 /*%end*/",
+            "SELECT id FROM employee WHERE 1=1 /*%else*/ AND id<0",
+            "SELECT id FROM employee WHERE /*%if active*/ id>0 /*%else*/ id<0 /*%else*/ id=0 /*%end*/",
+            "SELECT id FROM employee WHERE /*%if active*/ id>0 /*%else*/ id<0 /*%elseif other*/ id=0 /*%end*/",
+            "SELECT id FROM employee WHERE /*%if active*/ id>0 /*%elseif*/ id<0 /*%end*/",
+            "SELECT id FROM employee WHERE /*%if active*/ id>0 /*%elseif */ id<0 /*%end*/",
             "SELECT id FROM employee WHERE 1=1 /*%for id:ids*/ AND id>0 /*%end*/",
             "SELECT id FROM employee WHERE 1=1 /*%if*/ AND id>0 /*%end*/",
             "SELECT id FROM employee WHERE 1=1 /*%if active*/ AND id>0",
@@ -103,7 +108,7 @@ class SqlInputConditionTest {
             "SELECT id FROM employee WHERE 1=1 /*%if active*/ DELETE FROM employee /*%end*/",
             "SELECT id FROM employee WHERE 1=1 /*%if active*/ AND id>0 /*%end*/; DELETE FROM employee"
     })
-    void rejectsProjectionChangesUnsupportedBranchesAndCrossedScopes(String sql) {
+    void rejectsMalformedTemplatesUsingTheOfficialParserAndReadOnlyChecks(String sql) {
         assertThrows(GenerationException.class, () -> SqlInput.validate(sql, SqlInput.Dialect.SQLSERVER));
     }
 
@@ -111,7 +116,7 @@ class SqlInputConditionTest {
         String sql = "SELECT id\nFROM employee\n/*%if private_expression*/ WHERE id=1 /*%end*/";
         var failure = assertThrows(GenerationException.class, () -> SqlInput.validate(sql));
         assertTrue(failure.getMessage().contains("line 3"));
-        assertTrue(failure.getMessage().contains("WHERE or HAVING"));
+        assertTrue(failure.getMessage().contains("DOMA2133"));
         assertFalse(failure.getMessage().contains("private_expression"));
     }
 

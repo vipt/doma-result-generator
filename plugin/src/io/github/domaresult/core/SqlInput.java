@@ -11,7 +11,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Prepares metadata SELECTs and accepts filter-only conditions without evaluating expressions. */
+/** Prepares metadata SELECT variants without evaluating application expressions. */
 public final class SqlInput {
     public enum Dialect {
         STANDARD(false, false, false), POSTGRESQL(true, false, true), MYSQL(false, true, false),
@@ -52,9 +52,9 @@ public final class SqlInput {
         void token(String sql, int start, int end, boolean literal, boolean comment) {
             String key = prefix + originals.size() + "__";
             if (literal) key = "'" + key + "'";
-            if (comment) key = "--" + key;
+            if (comment) key = "/*!" + key + "\n".repeat((int) sql.substring(start, end).chars().filter(c -> c == '\n').count()) + "*/";
             originals.put(key, sql.substring(start, end));
-            replacements.add(new Replacement(start, end, key + (comment ? "\n" : "")));
+            replacements.add(new Replacement(start, end, key));
         }
     }
 
@@ -65,14 +65,20 @@ public final class SqlInput {
     }
 
     public static String validate(String sql, Dialect dialect) {
-        return inspect(sql, dialect).sql();
+        Validated validated = inspect(sql, dialect);
+        DomaTestSqlBuilder.validate(validated.maskedSql());
+        return validated.sql();
     }
 
     /** SQL Server's JDBC getMetaData prepends SET FMTONLY ON without a terminator. */
     static String forMetadata(String sql, Dialect dialect) {
+        return metadataVariants(sql, dialect).get(0);
+    }
+
+    static List<String> metadataVariants(String sql, Dialect dialect) {
         Validated validated = inspect(sql, dialect);
-        String prepared = DomaTestSqlBuilder.prepare(validated.maskedSql(), validated.originals());
-        return dialect == Dialect.SQLSERVER && validated.startsWithCte() ? ";" + prepared : prepared;
+        return DomaTestSqlBuilder.prepareVariants(validated.maskedSql(), validated.originals()).stream()
+                .map(prepared -> dialect == Dialect.SQLSERVER && validated.startsWithCte() ? ";" + prepared : prepared).toList();
     }
 
     private static Validated inspect(String sql, Dialect dialect) {
@@ -80,7 +86,6 @@ public final class SqlInput {
         List<String> words = new ArrayList<>();
         List<Replacement> replacements = new ArrayList<>();
         Masks masks = new Masks(sql);
-        SqlConditionContext conditions = new SqlConditionContext(sql);
         int terminal = -1;
         boolean started = false, leadingSeparator = false;
         for (int i = 0; i < sql.length();) {
@@ -115,10 +120,10 @@ public final class SqlInput {
                     i = star + 1;
                 } else if (comment.startsWith("%")) {
                     if (terminal >= 0) throw new GenerationException("Only one SELECT statement is allowed.");
-                    conditions.directive(comment, start);
+                    // Doma's parser owns directive syntax and nesting; do not impose a second grammar here.
                 } else if (comment.startsWith("#") || comment.startsWith("^")) {
                     throw new GenerationException("Replace embedded or literal Doma directives with a concrete SELECT in Metadata SQL. "
-                            + "Filter-only %if/%end conditions and bind comments with test literals (/* id */0) are supported.");
+                            + "Conditional SQL and bind comments with test literals (/* id */0) are supported.");
                 } else masks.token(sql, start, i, false, true);
                 continue;
             }
@@ -130,7 +135,7 @@ public final class SqlInput {
                 continue;
             }
             started = true;
-            if (c == ';') { conditions.symbol(c, i); terminal = i++; continue; }
+            if (c == ';') { terminal = i++; continue; }
             if (c == '?') throw new GenerationException("Replace JDBC parameters (?) with typed test literals.");
             if (c == '\'' || c == '"' || c == '`' || c == '[') {
                 int quotedStart = i;
@@ -149,7 +154,6 @@ public final class SqlInput {
                 }
                 if (!closed) throw new GenerationException("Unclosed SQL string or quoted identifier.");
                 masks.token(sql, quotedStart, i, c == '\'' || c == '"' && dialect == Dialect.MYSQL, false);
-                conditions.atom();
                 continue;
             }
             if (c == '$') {
@@ -161,7 +165,7 @@ public final class SqlInput {
                     int quotedStart = i;
                     i = end + delimiter.length();
                     masks.token(sql, quotedStart, i, true, false);
-                    conditions.atom(); continue;
+                    continue;
                 }
             }
             if (Character.isLetter(c) || c == '_') {
@@ -172,11 +176,9 @@ public final class SqlInput {
                 boolean locking = word.equals("UPDATE") && !words.isEmpty() && (words.get(words.size() - 1).equals("FOR")
                         || words.size() >= 3 && words.subList(words.size() - 3, words.size()).equals(List.of("FOR", "NO", "KEY")));
                 if (WRITES.contains(word) && !locking) throw new GenerationException("Use a SELECT without data modification: " + word);
-                conditions.word(word, begin);
                 words.add(word);
-            } else { conditions.symbol(c, i); i++; }
+            } else i++;
         }
-        conditions.finish();
         if (words.isEmpty() || !(words.get(0).equals("SELECT") || words.get(0).equals("WITH"))
                 || !words.contains("SELECT")) {
             throw new GenerationException("Enter a SELECT or a WITH ... SELECT statement.");

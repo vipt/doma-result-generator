@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 public final class JdbcMetadataReader {
+    private record Description(List<ResultColumn> columns, List<Integer> jdbcTypes) {}
     /** Does not execute the query and does not close the caller's connection. */
     public List<ResultColumn> read(Connection connection, String sql) throws SQLException {
         return read(connection, sql, "", TypeNameMappings.empty());
@@ -35,7 +36,23 @@ public final class JdbcMetadataReader {
             TypeNameMappings mappings, Consumer<JdbcErrorDetails.Stage> progress, SqlInput.Dialect dialect,
             PreviewExecution.Cancellation cancellation) throws SQLException {
         cancellation.check();
-        String prepared = SqlInput.forMetadata(sql, dialect);
+        List<String> variants = SqlInput.metadataVariants(sql, dialect);
+        Description first = null;
+        for (String prepared : variants) {
+            cancellation.check();
+            Description current = describe(connection, prepared, qualifiedClassName, mappings, progress, cancellation);
+            if (first == null) first = current;
+            else if (!first.equals(current)) {
+                throw new MetadataException("Conditional SELECT branches return different column names, order or JDBC types. "
+                        + "Use a concrete SELECT for the intended result in Metadata SQL. The SQL file is unchanged.");
+            }
+        }
+        return first.columns();
+    }
+
+    private Description describe(Connection connection, String prepared, String qualifiedClassName,
+            TypeNameMappings mappings, Consumer<JdbcErrorDetails.Stage> progress,
+            PreviewExecution.Cancellation cancellation) throws SQLException {
         progress.accept(JdbcErrorDetails.Stage.PREPARING_SQL);
         PreparedStatement statement = connection.prepareStatement(prepared);
         try (statement) {
@@ -56,16 +73,19 @@ public final class JdbcMetadataReader {
             }
             List<String> fields = JavaNames.fieldNames(labels);
             List<ResultColumn> columns = new ArrayList<>();
+            List<Integer> jdbcTypes = new ArrayList<>();
             for (int i = 1; i <= labels.size(); i++) {
                 cancellation.check();
                 String label = labels.get(i - 1);
+                int jdbcType = metadata.getColumnType(i);
+                jdbcTypes.add(jdbcType);
                 var override = mappings.resolve(qualifiedClassName, fields.get(i - 1));
                 String type = override.isPresent() ? override.get()
-                        : javaType(metadata.getColumnType(i), label, metadata.getColumnTypeName(i));
+                        : javaType(jdbcType, label, metadata.getColumnTypeName(i));
                 columns.add(new ResultColumn(label, type));
             }
             progress.accept(JdbcErrorDetails.Stage.CLOSING_STATEMENT);
-            return List.copyOf(columns);
+            return new Description(List.copyOf(columns), List.copyOf(jdbcTypes));
         } finally { cancellation.release(statement); }
     }
 

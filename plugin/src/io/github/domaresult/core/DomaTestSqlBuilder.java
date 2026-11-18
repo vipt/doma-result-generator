@@ -1,42 +1,170 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 package io.github.domaresult.core;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import javax.sql.DataSource;
+import org.seasar.doma.DomaException;
+import org.seasar.doma.internal.expr.ExpressionParser;
+import org.seasar.doma.internal.expr.node.EmptyNode;
 import org.seasar.doma.internal.jdbc.sql.NodePreparedSqlBuilder;
 import org.seasar.doma.internal.jdbc.sql.SqlParser;
 import org.seasar.doma.internal.jdbc.sql.node.BindVariableNode;
 import org.seasar.doma.internal.jdbc.sql.node.IfBlockNode;
+import org.seasar.doma.internal.jdbc.sql.node.ForBlockNode;
+import org.seasar.doma.internal.jdbc.sql.node.ClauseNode;
+import org.seasar.doma.internal.jdbc.sql.node.WhereClauseNode;
+import org.seasar.doma.internal.jdbc.sql.node.HavingClauseNode;
+import org.seasar.doma.internal.jdbc.sql.node.SelectStatementNode;
+import org.seasar.doma.internal.jdbc.sql.node.ParensNode;
+import org.seasar.doma.internal.jdbc.sql.node.SqlLocation;
+import org.seasar.doma.jdbc.JdbcException;
 import org.seasar.doma.jdbc.Config;
 import org.seasar.doma.jdbc.SqlKind;
+import org.seasar.doma.jdbc.SqlNode;
 import org.seasar.doma.jdbc.dialect.Dialect;
 import org.seasar.doma.jdbc.dialect.StandardDialect;
 
-/** Official Doma SQL assembly with test literals and enabled filters, never application evaluation. */
+/** Official Doma assembly with test literals and explicit branch choices, never application evaluation. */
 final class DomaTestSqlBuilder extends NodePreparedSqlBuilder {
+    static final int MAX_VARIANTS = 64;
     private static final Config CONFIG = new Config() {
         @Override public DataSource getDataSource() { throw new UnsupportedOperationException("SQL assembly does not connect to a database."); }
         @Override public Dialect getDialect() { return new StandardDialect(); }
     };
 
-    private DomaTestSqlBuilder() { super(CONFIG, SqlKind.SELECT, null); }
+    private final Map<IfBlockNode, List<String>> branchKeys;
+    private final Map<List<String>, Integer> choices;
 
-    static String prepare(String maskedSql, Map<String, String> originals) {
+    private DomaTestSqlBuilder(Map<IfBlockNode, List<String>> branchKeys, Map<List<String>, Integer> choices) {
+        super(CONFIG, SqlKind.SELECT, null);
+        this.branchKeys = branchKeys;
+        this.choices = choices;
+    }
+
+    static void validate(String maskedSql) { parse(maskedSql); }
+
+    static List<String> prepareVariants(String maskedSql, Map<String, String> originals) {
         try {
-            String sql = new DomaTestSqlBuilder().build(new SqlParser(maskedSql).parse(), Function.identity()).getRawSql();
-            for (var entry : originals.entrySet()) {
-                if (entry.getKey().startsWith("--")) sql = sql.replace(entry.getKey() + "\n", entry.getValue());
-                sql = sql.replace(entry.getKey(), entry.getValue());
+            SqlNode root = parse(maskedSql);
+            Map<IfBlockNode, List<String>> keys = branchKeys(root);
+            Map<List<String>, Integer> counts = new LinkedHashMap<>();
+            for (var key : keys.values()) {
+                // Identical condition chains in UNION branches use the same representative choice.
+                counts.put(key, key.size() + 1); // The last choice is ELSE or the empty branch.
             }
-            return sql;
+            List<Map<List<String>, Integer>> assignments = new ArrayList<>();
+            assignments.add(Map.of());
+            for (var entry : counts.entrySet()) {
+                if (assignments.size() > MAX_VARIANTS / entry.getValue()) {
+                    throw new GenerationException("Metadata SQL has more than " + MAX_VARIANTS
+                            + " conditional branch combinations. Use a concrete SELECT in Metadata SQL.");
+                }
+                List<Map<List<String>, Integer>> expanded = new ArrayList<>();
+                for (var assignment : assignments) {
+                    for (int choice = 0; choice < entry.getValue(); choice++) {
+                        var next = new LinkedHashMap<>(assignment);
+                        next.put(entry.getKey(), choice);
+                        expanded.add(next);
+                    }
+                }
+                assignments = expanded;
+            }
+            var variants = new LinkedHashSet<String>();
+            for (var assignment : assignments) {
+                String sql = new DomaTestSqlBuilder(keys, assignment).build(root, Function.identity()).getRawSql();
+                for (var entry : originals.entrySet()) {
+                    sql = sql.replace(entry.getKey(), entry.getValue());
+                }
+                variants.add(sql);
+            }
+            return List.copyOf(variants);
+        } catch (GenerationException e) {
+            throw e;
         } catch (RuntimeException e) {
             throw new GenerationException("Doma could not assemble the metadata test SQL. Check directive nesting and test literals in Metadata SQL.");
         }
     }
 
+    private static SqlNode parse(String sql) {
+        try {
+            SqlNode root = new SqlParser(sql).parse();
+            inspectExpressions(root);
+            return root;
+        } catch (GenerationException e) { throw e; }
+        catch (DomaException e) {
+            String code = e.getMessageResource().getCode();
+            Object args = e.getArgs();
+            String line = e instanceof JdbcException && args instanceof Object[] values
+                    && values.length > 1 && values[1] instanceof Integer number
+                    ? " (prepared SQL line " + number + ")" : "";
+            throw new GenerationException("Doma could not parse the metadata test SQL: " + code + line
+                    + ". Check directive nesting and test literals in Metadata SQL.");
+        }
+    }
+
+    private static void inspectExpressions(SqlNode node) {
+        if (node instanceof ForBlockNode) {
+            throw new GenerationException("Doma loops require iteration values. Use a concrete SELECT in Metadata SQL; application code is not evaluated.");
+        }
+        if (node instanceof IfBlockNode block) {
+            inspectExpression(block.getIfNode().getExpression(), block.getIfNode().getLocation());
+            for (var alternative : block.getElseifNodes()) inspectExpression(alternative.getExpression(), alternative.getLocation());
+        }
+        for (SqlNode child : node.getChildren()) inspectExpressions(child);
+    }
+
+    private static void inspectExpression(String expression, SqlLocation location) {
+        String line = " (prepared SQL line " + location.getLineNumber() + ")";
+        try {
+            if (new ExpressionParser(expression).parse() instanceof EmptyNode) {
+                throw new GenerationException("A Doma condition requires an expression" + line + ". Check Metadata SQL.");
+            }
+        } catch (DomaException e) {
+            throw new GenerationException("Doma could not parse a condition expression: " + e.getMessageResource().getCode()
+                    + line + ". Check Metadata SQL.");
+        }
+    }
+
+    private static Map<IfBlockNode, List<String>> branchKeys(SqlNode root) {
+        Map<IfBlockNode, List<String>> keys = new LinkedHashMap<>();
+        collect(root, false, keys);
+        return keys;
+    }
+
+    private static void collect(SqlNode node, boolean filter, Map<IfBlockNode, List<String>> keys) {
+        if (node instanceof SelectStatementNode || node instanceof ClauseNode) {
+            filter = node instanceof WhereClauseNode || node instanceof HavingClauseNode;
+        }
+        if (node instanceof IfBlockNode block && !(filter && block.getElseifNodes().isEmpty()
+                && block.getElseNode() == null && !containsClause(block.getIfNode()))) {
+            List<String> expressions = new ArrayList<>();
+            expressions.add(block.getIfNode().getExpression().strip());
+            block.getElseifNodes().forEach(alternative -> expressions.add(alternative.getExpression().strip()));
+            keys.put(block, List.copyOf(expressions));
+        }
+        for (SqlNode child : node.getChildren()) collect(child, filter, keys);
+    }
+
+    private static boolean containsClause(SqlNode node) {
+        for (SqlNode child : node.getChildren()) {
+            // Subquery clauses belong to the predicate, not to the containing result projection.
+            if (child instanceof ParensNode) continue;
+            if (child instanceof ClauseNode || containsClause(child)) return true;
+        }
+        return false;
+    }
+
     @Override public Void visitIfBlockNode(IfBlockNode node, Context context) {
-        node.getIfNode().accept(this, context);
+        List<String> key = branchKeys.get(node);
+        int choice = key == null ? 0 : choices.get(key);
+        if (choice == 0) node.getIfNode().accept(this, context);
+        else if (choice <= node.getElseifNodes().size()) node.getElseifNodes().get(choice - 1).accept(this, context);
+        else if (node.getElseNode() != null) node.getElseNode().accept(this, context);
         node.getEndNode().accept(this, context);
         return null;
     }

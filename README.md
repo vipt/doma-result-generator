@@ -143,7 +143,7 @@ select /*%expand "e" */* from employee e
 
 On **Preview**, **Metadata SQL** displays the prepared SELECT. The saved SQL file remains unchanged. Bind comments and test values, including `IN /* ids */(0)`, can remain. A literal alias can use a quoted SQL identifier; arbitrary alias expressions are not evaluated. The database describes `*` or `alias.*`, so metadata generation includes that table's database columns rather than deriving a projection from an existing Doma entity definition.
 
-### Doma conditions in query filters
+### Doma conditions
 
 Nested `/*%if condition */ ... /*%end*/` filters inside an existing WHERE or HAVING clause can remain unchanged. No edits to the SQL file or Metadata SQL are needed.
 
@@ -162,11 +162,25 @@ WHERE 1=1
 /*%end*/
 ```
 
-SQL parsing and assembly use Doma's own `SqlParser` and `NodePreparedSqlBuilder`. Leading logical operators such as `WHERE AND ...` and `HAVING OR ...`, including inside subqueries, are removed by the official builder. No source or Metadata SQL edits are needed.
+Template syntax and nesting are parsed by Doma's own `SqlParser`, condition-expression syntax by its `ExpressionParser`, and SQL assembly by its `NodePreparedSqlBuilder`. There is no separate plug-in condition grammar or clause-scope validator. Leading logical operators such as `WHERE AND ...` and `HAVING OR ...`, including inside subqueries, are removed by the official builder. No source or Metadata SQL edits are needed.
 
-Since no DAO invocation arguments are supplied, an adapter includes supported filter bodies and test literals without evaluating conditions or application Java code. Opaque strings, quoted identifiers and bind comments are protected and restored. The visible template retains its condition comments; JDBC receives the official builder's assembled SQL. No result rows are fetched. Filters inside subqueries, CTEs and UNION branches are supported.
+Since no DAO invocation arguments are supplied, an adapter includes simple filter bodies and test literals without evaluating conditions or application Java code. Opaque strings, quoted identifiers and bind comments are protected and restored. The visible template retains its condition comments; JDBC receives the official builder's assembled SQL. No result rows are fetched. Filters inside subqueries, CTEs and UNION branches are supported.
 
-Conditions that change SELECT columns or FROM clauses, add/remove a WHERE or HAVING clause itself, `%else`, `%elseif`, `%for`, embedded variables (`/*# ... */`) and literal variables (`/*^ ... */`) still require a concrete SELECT in **Metadata SQL**. Each `%if`/`%end` pair must stay inside the same filter clause, query and parenthesis scope. Unsupported conditions and unmatched tags report a line number.
+Conditional SELECT expressions with `%if`/`%elseif`/`%else` are also supported without rewriting the SQL. For example:
+
+```sql
+SELECT e.id
+/*%if options.exactName */
+  , CASE WHEN e.exact_name IS NULL THEN e.name ELSE e.exact_name END AS full_name
+/*%else*/
+  , e.name AS full_name
+/*%end*/
+FROM employee e
+```
+
+Conditional choices are assembled separately by the official Doma builder, including SELECT expressions, FROM/JOIN and ORDER BY alternatives that its parser accepts. The generator compares each variant's column names, order and JDBC types before generating a class. All must agree; type-mapping overrides do not bypass this check. A projection `%if` without `%else` also checks the empty branch. Identical condition-expression chains are chosen consistently across repeated occurrences, including UNION branches. Independent chains are combined, up to **64 combinations**, and identical assembled SQL is described once. Simple filter-only `%if`/`%end` bodies remain included, so ordinary optional filters do not multiply the combinations; this optimization follows Doma's syntax tree rather than a second SQL parser. Each description uses `getMetaData()`, never SELECT execution, and shares the existing Preview cancellation and timeout.
+
+If branch metadata differs or the combination limit is exceeded, select the intended concrete SELECT in **Metadata SQL**. Malformed templates are rejected by Doma's parser with its diagnostic code and, when available, a prepared-SQL line number, without exposing raw SQL. Loops (`%for`) still need concrete SQL because no iteration values are provided. Embedded/literal variables (`/*# ... */`, `/*^ ... */`) also require concrete SQL. The remaining plug-in adapter selects representative branches, preserves bind test literals and prepares literal `%expand` for JDBC metadata; it does not evaluate DAO arguments or application code. SELECT-only checks remain separate from template syntax. This is a generation-time adapter, not an unchanged DAO execution path, and does not prove which expression combinations occur at runtime.
 
 **Metadata SQL → SQL syntax** defaults to automatic selection from the JDBC URL: PostgreSQL, MySQL/MariaDB, SQL Server, or generic non-nested comments for Oracle and other URLs. PostgreSQL/SQL Server support nested comments; MySQL supports backslash string escapes. Select the corresponding override for MySQL `NO_BACKSLASH_ESCAPES` or PostgreSQL legacy backslash strings. Automatic selection does not query the database's session mode.
 
