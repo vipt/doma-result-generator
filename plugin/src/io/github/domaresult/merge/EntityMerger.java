@@ -15,6 +15,7 @@ import java.util.Set;
 import java.util.function.Predicate;
 import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.dom.*;
+import org.seasar.doma.jdbc.entity.NamingType;
 
 /** Uses JDT source ranges; text outside targeted declarations is kept verbatim. */
 public final class EntityMerger {
@@ -53,6 +54,7 @@ public final class EntityMerger {
         for (ASTNode node : generatedReferences(existing)) ownedImports.add(referenceType(existing, node).replace("[]", ""));
         List<String> additions = new ArrayList<>();
         List<String> notes = new ArrayList<>();
+        int reusedFields = 0;
         boolean alreadyManaged = existing.fields.values().stream().anyMatch(field -> managed(field.node))
                 || java.util.Arrays.stream(existing.type.getMethods()).anyMatch(EntityMerger::managed);
         boolean legacy = !alreadyManaged && existing.type.getJavadoc() != null
@@ -63,7 +65,7 @@ public final class EntityMerger {
             Field wanted = entry.getValue();
             Field old = existing.fields.get(name);
             for (var other : existing.fields.entrySet()) {
-                String otherLabel = existing.columnLabel(other.getValue().node);
+                String otherLabel = existing.effectiveColumnLabel(other.getValue());
                 if (!other.getKey().equals(name) && otherLabel != null
                         && otherLabel.equalsIgnoreCase(desired.columnLabel(wanted.node))) {
                     throw conflict("Column '" + otherLabel + "' already belongs to field '" + other.getKey()
@@ -72,7 +74,23 @@ public final class EntityMerger {
             }
             boolean adopt = old != null && legacy && existing.simpleField(old);
             if (old != null && !managed(old.node) && !adopt) {
-                throw conflict("Field '" + name + "' is handwritten or has no generator ownership marker. It was preserved.");
+                if (!existing.mappedInstanceField(old)) {
+                    throw conflict("Existing field '" + name + "' is static, final, transient or excluded from Doma mapping. It was preserved.");
+                }
+                String oldType = existing.fieldType(old), newType = desired.fieldType(wanted);
+                if (!oldType.equals(newType)) {
+                    throw conflict("Existing field '" + name + "' has type '" + oldType + "', but the SELECT requires '"
+                            + newType + "'. The field has no generator ownership marker and was preserved. Review the type or use another result class.");
+                }
+                String oldLabel = existing.effectiveColumnLabel(old), newLabel = desired.columnLabel(wanted.node);
+                if (oldLabel == null || !oldLabel.equalsIgnoreCase(newLabel)) {
+                    throw conflict("Existing field '" + name + "' does not have a matching Doma column mapping for SELECT label '"
+                            + newLabel + "'. It was preserved. Review @Column/naming or use another result class.");
+                }
+                reusedFields++;
+                // A compatible existing member is usable without granting ownership.
+                // Preserve its declaration, comments, initializer and all accessors verbatim.
+                continue;
             }
             if (old == null) additions.add(desired.text(wanted.node));
             else {
@@ -96,6 +114,7 @@ public final class EntityMerger {
             mergeGetter(existing, desired, old, wanted, name, "get" + suffix, legacy && adopt, additions, edits);
             mergeSetter(existing, desired, old, wanted, name, "set" + suffix, legacy && adopt, additions, edits);
         }
+        if (reusedFields > 0) notes.add("Kept " + reusedFields + " existing field(s) and their accessors unchanged because their types and column mappings match.");
 
         for (var entry : existing.fields.entrySet()) {
             String name = entry.getKey();
@@ -501,6 +520,49 @@ public final class EntityMerger {
         String columnLabel(FieldDeclaration field) {
             StringLiteral literal = columnLiteral(field);
             return literal == null ? null : literal.getLiteralValue();
+        }
+        boolean mappedInstanceField(Field field) {
+            int modifiers = field.node.getModifiers();
+            return !Modifier.isStatic(modifiers) && !Modifier.isFinal(modifiers) && !Modifier.isTransient(modifiers)
+                    && annotation(field.node, "org.seasar.doma.Transient") == null
+                    && annotation(field.node, "org.seasar.doma.OriginalStates") == null;
+        }
+        String effectiveColumnLabel(Field field) {
+            if (!mappedInstanceField(field)) return null;
+            Annotation column = annotation(field.node, "org.seasar.doma.Column");
+            if (column instanceof NormalAnnotation normal) {
+                for (Object item : normal.values()) {
+                    MemberValuePair pair = (MemberValuePair) item;
+                    if (!pair.getName().getIdentifier().equals("name")) continue;
+                    if (!(pair.getValue() instanceof StringLiteral literal)) return null;
+                    if (!literal.getLiteralValue().isEmpty()) return literal.getLiteralValue();
+                }
+            } else if (column != null && !(column instanceof MarkerAnnotation)) return null;
+            NamingType naming = NamingType.NONE;
+            Annotation entity = annotation(type, "org.seasar.doma.Entity");
+            if (entity instanceof NormalAnnotation normal) {
+                for (Object item : normal.values()) {
+                    MemberValuePair pair = (MemberValuePair) item;
+                    if (!pair.getName().getIdentifier().equals("naming")) continue;
+                    Expression expression = pair.getValue();
+                    String constant = null;
+                    String owner = "org.seasar.doma.jdbc.entity.NamingType";
+                    if (expression instanceof QualifiedName qualified && resolve(qualified.getQualifier().getFullyQualifiedName()).equals(owner)) {
+                        constant = qualified.getName().getIdentifier();
+                    } else if (expression instanceof SimpleName simple) {
+                        String imported = staticImports.get(simple.getIdentifier());
+                        if ((owner + "." + simple.getIdentifier()).equals(imported)) constant = simple.getIdentifier();
+                        for (Object value : unit.imports()) {
+                            ImportDeclaration declaration = (ImportDeclaration) value;
+                            if (declaration.isStatic() && declaration.isOnDemand() && declaration.getName().getFullyQualifiedName().equals(owner)) constant = simple.getIdentifier();
+                        }
+                    }
+                    if (constant == null) return null;
+                    try { naming = NamingType.valueOf(constant); }
+                    catch (IllegalArgumentException unknown) { return null; }
+                }
+            }
+            return naming.apply(field.fragment.getName().getIdentifier());
         }
         boolean simpleField(Field field) {
             return field.node.fragments().size() == 1 && field.fragment.getInitializer() == null

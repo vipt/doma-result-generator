@@ -112,6 +112,7 @@ Generated fields and accessors carry the Javadoc ownership tag `@domaGenerated`.
 
 - New result columns add fields and accessors. Type changes update the field and simple getter/setter signatures. `name.properties` rules apply to these updates too.
 - Handwritten methods, constructors, fields, imports, class annotations, nested types and other top-level types are retained. Customized accessor bodies are retained when their signatures remain compatible.
+- Existing unmarked fields are reused when Java types and Doma column mappings match. Their declarations and accessors stay unchanged, without ownership markers or new annotations; new result columns can still be added.
 - Javadoc, line comments and block comments are kept. When an obsolete generated declaration can be removed, its user comments remain as standalone comments. Only generator ownership tags are removed with the obsolete declaration.
 - A marked obsolete field and its simple marked accessors can be removed. If retained code refers to that field, an accessor has a custom body, or the field has custom initializers/annotations, the update is stopped with an explanation.
 - A handwritten member collision or an incompatible customized accessor stops the update. A private JDT working copy also checks the proposed class using the target project's Java build path. Java errors, including type errors in handwritten code, must be resolved before applying the update. The private validation does not save the class.
@@ -124,6 +125,14 @@ Save existing edits before previewing. At Update, the saved source and modificat
 ### Classes from the earlier prototype
 
 For a class with the original `Generated from SELECT result metadata.` header and no ownership tags, the first update can adopt matching simple `@Column(name = ...)` fields and ordinary accessors. Their user comments and custom methods are retained, and ownership tags are added to adopted members. Unmarked old fields absent from the current SQL remain in place, with a preview note, because their ownership cannot be established. Review those fields manually. Arbitrary unmarked field collisions are not overwritten. Immutable entities and unsupported/custom declarations require manual adjustment.
+
+### Existing entities without ownership tags
+
+An existing `@Entity` with `private String code;` can reuse that field for a string-valued `CODE` result column, without adding `@Column` or `@domaGenerated`. Column comparisons ignore case, as Doma's result mapping does. Explicit literal `@Column(name = "...")` mappings and the class's `@Entity(naming = NamingType....)` convention are honored; unspecified naming uses the standard NONE convention.
+
+Constructors, `equals`, `hashCode`, `toString`, comments and handwritten fields absent from the SELECT stay in place. If everything matches, there is no diff and Update stays disabled. Additional columns produce new generated members for comparison.
+
+Reuse does not grant permission to change the existing field's type or remove it on subsequent previews. Type/mapping differences and static, final, transient or Doma-excluded fields stop the merge with a specific explanation. Custom `Config.getNaming()` implementations and constant expressions in `@Column` names are not executed/evaluated by this source check.
 
 ## SQL input and the official generator
 

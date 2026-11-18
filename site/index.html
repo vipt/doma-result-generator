@@ -51,6 +51,7 @@
         <li>PreviewではSELECTを実行して列情報を取得します。0件の結果でも生成できます。取得列が引数で変わるSQLでは、ダミー値で選ばれた経路の<strong>Proposed Java</strong>を確認してください。</li>
         <li>SQL Serverの<code>WITH</code>で始まるCTEにも対応。ラッパーや<code>SET FMTONLY</code>は挿入しません。</li>
         <li>既存クラスは <strong>Preview → 差分比較 → Update</strong>で更新。手動メソッドやコメントを保持し、衝突がある場合は更新を停止。</li>
+        <li>管理タグのない既存フィールドも、型とDomaの列対応が一致すればそのまま利用。コンストラクター・コメント・equalsなどを保持し、新しい列だけを追加できます。</li>
         <li>接続待ちでも進捗ダイアログの<strong>Cancel</strong>でPreviewの待機を中止。<strong>Preview timeout (seconds)</strong>で待ち時間の上限を設定（初期値30秒）。遅れて返った結果は適用しません。</li>
       </ul>
       <pre><code># name.properties
@@ -78,7 +79,7 @@
 
       <h3>対応環境と現在の範囲</h3>
       <p><strong>Eclipse 2023-12 / 4.30以降、Java 17以上</strong>を対象にしています。Java開発機能（JDT）、対象プロジェクトのDoma 2設定、JDBCドライバーを用意してください。</p>
-      <p class="note">初期プレビュー版です。H2とDoma 2.57.0・doma-gen 2.28.0でテストしています。Previewでは公式doma-genがSELECTを実行し、結果の列情報を取得します。DAOの条件式・ループ・埋め込みSQLは解釈しません。SQL自体が実行可能であることが条件で、分岐選択やSQL補正は追加しません。元ファイルは変更しません。他DBの実機検証と比較画面の手動確認は今後の確認項目です。</p>
+      <p class="note">初期プレビュー版です。H2とDoma 2.57.0・doma-gen 2.28.0でテストしています。ダミー引数を自動で用意し、Doma本体でSQLを組み立ててからdoma-genでSELECTを実行し、列情報を取得します。DTO・定数は先にプロジェクトをビルドしてください。取得列が分岐するSQLはProposed Javaで確認してください。元SQLは変更しません。他DBの実機検証は今後の確認項目です。</p>
       <p class="links"><a href="https://github.com/vipt/doma-result-generator/blob/main/README.ja.md">詳しい使い方</a><a href="https://github.com/vipt/doma-result-generator">ソースコード</a><a href="https://github.com/vipt/doma-result-generator/issues">不具合・要望</a></p>
     </section>
 
@@ -105,6 +106,7 @@
         <li>Preview executes the SELECT and reads metadata even for an empty result. If arguments change projected columns, review <strong>Proposed Java</strong> for the path selected with dummy values.</li>
         <li>Use SQL Server CTEs starting with <code>WITH</code>, without injected wrappers or SET FMTONLY preambles.</li>
         <li>Review existing-class changes before <strong>Update</strong>, retaining handwritten methods and comments. Conflicts stop the update.</li>
+        <li>Reuse existing unmarked fields when types and Doma column mappings match, keeping constructors, comments and custom methods unchanged while adding new columns.</li>
         <li>Share named connection profiles across projects in one workspace. Remember each project's last profile and Package, with optional encrypted password storage in Eclipse Secure Storage.</li>
         <li>Cancel the preview wait from its progress dialog even while connecting. Set <strong>Preview timeout (seconds)</strong> to limit the wait (default: 30 seconds). Late results are discarded.</li>
       </ul>

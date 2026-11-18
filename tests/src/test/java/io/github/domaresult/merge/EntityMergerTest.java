@@ -209,9 +209,141 @@ class EntityMergerTest {
         compile(result.source());
     }
 
-    @Test void handwrittenUnmarkedFieldCollisionIsNeverOverwritten() {
+    @Test void compatibleUnmarkedFieldIsReusedWithoutTakingOwnershipOrAddingAccessors() {
         String source = "package example; @org.seasar.doma.Entity public class Result { Integer id; }";
-        assertThrows(GenerationException.class, () -> merge(source, generated(column("ID", "java.lang.Integer"))));
+        var result = new EntityMerger().merge(source, generated(column("ID", "java.lang.Integer")));
+        assertTrue(result.source().contains("{ Integer id; }"));
+        assertFalse(result.source().contains(EntityMerger.MARKER));
+        assertFalse(result.source().contains("getId()"));
+        assertEquals(1, result.notes().size());
+    }
+
+    @Test void unmarkedCodeValueEntityWithManualConstructorsAndObjectMethodsNeedsNoChanges() throws Exception {
+        String source = unmarkedCodeValue();
+        var result = new EntityMerger().merge(source, generated(column("CODE", "java.lang.String"), column("VALUE", "java.lang.String")));
+        assertEquals(source, result.source());
+        assertEquals(1, result.notes().size());
+        assertFalse(result.source().contains(EntityMerger.MARKER));
+        compile(result.source());
+    }
+
+    @Test void addsNewColumnsWithoutChangingExistingCompatibleCodeValueMembers() throws Exception {
+        String source = unmarkedCodeValue();
+        String proposed = generated(column("CODE", "java.lang.String"), column("VALUE", "java.lang.String"), column("DISPLAY_NAME", "java.lang.String"));
+        String merged = merge(source, proposed);
+        String existingMembers = source.substring(source.indexOf("    /** コード */"), source.lastIndexOf('}'));
+        assertTrue(merged.contains(existingMembers));
+        assertTrue(merged.contains("private String displayName;"));
+        assertTrue(merged.contains("getDisplayName()"));
+        assertFalse(merged.contains("@Column(name = \"CODE\")"));
+        assertFalse(merged.contains("@Column(name = \"VALUE\")"));
+        assertEquals(merged, merge(merged, proposed));
+        compile(merged);
+    }
+
+    @Test void reusingAnUnmarkedFieldDoesNotMakeLaterTypeChangesOrRemovalAutomatic() {
+        String source = unmarkedCodeValue();
+        String proposed = generated(column("CODE", "java.lang.String"), column("VALUE", "java.lang.String"), column("ID", "java.lang.Long"));
+        String merged = merge(source, proposed);
+        var error = assertThrows(GenerationException.class, () -> merge(merged, generated(column("CODE", "java.lang.Long"))));
+        assertTrue(error.getMessage().contains("java.lang.String"));
+        assertTrue(error.getMessage().contains("java.lang.Long"));
+        String removed = merge(merged, generated(column("ID", "java.lang.Long")));
+        assertTrue(removed.contains("private String code;"));
+        assertTrue(removed.contains("private String value;"));
+    }
+
+    @Test void compatibleUnmarkedInitializersAnnotationsAndCustomAccessorsArePreserved() throws Exception {
+        String source = """
+                package example;
+                import org.seasar.doma.Entity;
+                import org.seasar.doma.Column;
+                @Entity public class Result {
+                    /** Manual default. */
+                    @Deprecated @Column(name = "CODE") private String code = "default";
+                    public String getCode() { return code == null ? "" : code.trim(); }
+                    public void setCode(String value) { this.code = value.toUpperCase(); }
+                }
+                """;
+        assertEquals(source, merge(source, generated(column("CODE", "java.lang.String"))));
+        compile(source);
+    }
+
+    @Test void implicitMappingsUseTheOfficialEntityNamingConvention() throws Exception {
+        String source = """
+                package example;
+                import org.seasar.doma.Entity;
+                import org.seasar.doma.jdbc.entity.NamingType;
+                @Entity(naming = NamingType.SNAKE_UPPER_CASE) public class Result {
+                    /** Manual field. */ private String shortValue;
+                }
+                """;
+        assertEquals(source, merge(source, generated(column("SHORT_VALUE", "java.lang.String"))));
+        String staticImport = source.replace("import org.seasar.doma.jdbc.entity.NamingType;", "import static org.seasar.doma.jdbc.entity.NamingType.SNAKE_UPPER_CASE;")
+                .replace("naming = NamingType.SNAKE_UPPER_CASE", "naming = SNAKE_UPPER_CASE");
+        assertEquals(staticImport, merge(staticImport, generated(column("SHORT_VALUE", "java.lang.String"))));
+        String wildcard = staticImport.replace("NamingType.SNAKE_UPPER_CASE;", "NamingType.*;");
+        assertEquals(wildcard, merge(wildcard, generated(column("SHORT_VALUE", "java.lang.String"))));
+        compile(source);
+    }
+
+    @Test void mismatchedImplicitOrExplicitColumnMappingsStillStopWithoutChanges() {
+        String source = "package example; @org.seasar.doma.Entity public class Result { private String shortValue; }";
+        var implicit = assertThrows(GenerationException.class, () -> merge(source, generated(column("SHORT_VALUE", "java.lang.String"))));
+        assertTrue(implicit.getMessage().contains("column mapping"));
+        String explicit = "package example; @org.seasar.doma.Entity public class Result { @org.seasar.doma.Column(name=\"OLD\") private String code; }";
+        assertThrows(GenerationException.class, () -> merge(explicit, generated(column("CODE", "java.lang.String"))));
+    }
+
+    @Test void excludedOrNonInstanceFieldsAreNeverReusedForResultColumns() {
+        for (String declaration : List.of("static String code;", "final String code = \"x\";", "transient String code;", "@org.seasar.doma.Transient String code;", "@org.seasar.doma.OriginalStates String code;")) {
+            String source = "package example; @org.seasar.doma.Entity public class Result { " + declaration + " }";
+            assertThrows(GenerationException.class, () -> merge(source, generated(column("CODE", "java.lang.String"))), declaration);
+        }
+    }
+
+    @Test void duplicateImplicitMappingsDoNotProduceAnotherMappedField() {
+        String source = "package example; @org.seasar.doma.Entity public class Result { String CODE; }";
+        var error = assertThrows(GenerationException.class, () -> merge(source, generated(column("CODE", "java.lang.String"))));
+        assertTrue(error.getMessage().contains("already belongs"));
+    }
+
+    private String unmarkedCodeValue() {
+        return """
+                package example;
+                import java.util.Objects;
+                import org.seasar.doma.Entity;
+                @Entity
+                public class Result {
+                    /** コード */
+                    private String code;
+                    /** バリュー */
+                    private String value;
+                    /** 略称 */
+                    private String shortValue;
+                    /** メモ */
+                    private String memo;
+                    public Result() {}
+                    public Result(String code, String value) { this.code = code; this.value = value; }
+                    public Result(String value) { this.code = value; this.value = value; }
+                    public String getCode() { return code; }
+                    public void setCode(String code) { this.code = code; }
+                    public String getValue() { return value; }
+                    public void setValue(String value) { this.value = value; }
+                    public String getShortValue() { return shortValue; }
+                    public void setShortValue(String shortValue) { this.shortValue = shortValue; }
+                    public String getMemo() { return memo; }
+                    public void setMemo(String memo) { this.memo = memo; }
+                    @Override public String toString() { return "Result [code=" + code + ", value=" + value + "]"; }
+                    @Override public int hashCode() { return Objects.hash(code, value); }
+                    @Override public boolean equals(Object obj) {
+                        if (this == obj) return true;
+                        if (obj == null || getClass() != obj.getClass()) return false;
+                        Result other = (Result) obj;
+                        return Objects.equals(code, other.code) && Objects.equals(value, other.value);
+                    }
+                }
+                """;
     }
 
     @Test void anUnmarkedFieldInAnAlreadyManagedClassIsNotSilentlyReadopted() {

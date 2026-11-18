@@ -92,6 +92,59 @@ public class WorkspaceClassUpdaterTest {
         assertTrue("The previous saved class should be in local history", file().getHistory(null).length > 0);
     }
 
+    @Test public void compatibleHandwrittenEntityNeedsNoOwnershipMarkersOrWorkspaceWrite() throws Exception {
+        String manual = handwrittenCodeValue();
+        write(manual);
+        var before = updater.snapshot(target);
+        String desired = new EntityGenerator().generate("example", "Result", List.of(new ResultColumn("CODE", "java.lang.String"), new ResultColumn("VALUE", "java.lang.String")));
+        var result = updater.preview(target, before.source(), desired, null, stage -> {});
+        assertEquals(manual, result.source());
+        assertEquals(1, result.notes().size());
+        assertFalse(result.source().contains(EntityMerger.MARKER));
+        assertEquals(before, updater.snapshot(target));
+    }
+
+    @Test public void addsAColumnToAHandwrittenEntityAfterComparisonWithoutChangingItsMembers() throws Exception {
+        String manual = handwrittenCodeValue();
+        write(manual);
+        var before = updater.snapshot(target);
+        String desired = new EntityGenerator().generate("example", "Result", List.of(new ResultColumn("CODE", "java.lang.String"), new ResultColumn("VALUE", "java.lang.String"), new ResultColumn("DISPLAY_NAME", "java.lang.String")));
+        var result = updater.preview(target, before.source(), desired, null, stage -> {});
+        assertEquals(manual, updater.snapshot(target).source());
+        assertTrue(result.source().contains("private String displayName;"));
+        String members = manual.substring(manual.indexOf("    /** Code comment. */"), manual.lastIndexOf('}'));
+        assertTrue(result.source().contains(members));
+        updater.apply(target, new SourceUpdatePlan(manual, result.source(), before.modificationStamp()));
+        assertEquals(result.source(), updater.snapshot(target).source());
+        assertTrue(updater.snapshot(target).source().contains(members));
+    }
+
+    private String handwrittenCodeValue() {
+        return """
+                package example;
+                import java.util.Objects;
+                import org.seasar.doma.Entity;
+                @Entity public class Result {
+                    /** Code comment. */
+                    private String code;
+                    /** Value comment. */
+                    private String value;
+                    private String memo;
+                    public Result() {}
+                    public Result(String code, String value) { this.code = code; this.value = value; }
+                    public String getCode() { return code; }
+                    public void setCode(String code) { this.code = code; }
+                    public String getValue() { return value; }
+                    public void setValue(String value) { this.value = value; }
+                    @Override public String toString() { return code + ":" + value; }
+                    @Override public int hashCode() { return Objects.hash(code, value); }
+                    @Override public boolean equals(Object other) {
+                        return other instanceof Result && Objects.equals(code, ((Result) other).code) && Objects.equals(value, ((Result) other).value);
+                    }
+                }
+                """;
+    }
+
     @Test public void savedChangeAfterPreviewIsNeverOverwritten() throws Exception {
         var saved = updater.snapshot(target);
         var plan = new SourceUpdatePlan(saved.source(), generated("java.lang.Long"), saved.modificationStamp());
