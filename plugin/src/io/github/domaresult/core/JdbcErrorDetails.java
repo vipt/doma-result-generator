@@ -70,6 +70,12 @@ public final class JdbcErrorDetails {
                 + "\n" + stage.hint;
         if (!oracleCodes.isEmpty()) details += "\n\nOracle reference: https://docs.oracle.com/error-help/db/"
                 + oracleCodes.iterator().next().toLowerCase(Locale.ROOT) + "/";
+        if (!oracleDriver && vendorCodes.contains("319") && states.contains("S0001")
+                && (stage == Stage.PREPARING_SQL || stage == Stage.READING_COLUMNS)) {
+            details += "\n\nSQL Server 319: check WITH/CTE syntax and the preceding statement separator. "
+                    + "Select Automatic (JDBC URL) or SQL Server under Metadata SQL > SQL syntax. "
+                    + "The generator supplies the leading CTE separator for JDBC metadata lookup; the saved SQL is unchanged.";
+        }
         return new Info(summary, details);
     }
 }

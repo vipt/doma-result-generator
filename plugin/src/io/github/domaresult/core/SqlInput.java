@@ -34,6 +34,7 @@ public final class SqlInput {
     private static final String IDENTIFIER = "(?:[\\p{L}_][\\p{L}\\p{N}_$#]*|\"(?:[^\"]|\"\")+\"|`(?:[^`]|``)+`|\\[(?:[^\\]]|\\]\\])+\\])";
     private static final Pattern QUALIFIER = Pattern.compile(IDENTIFIER + "(?:\\." + IDENTIFIER + ")*");
     private record Replacement(int start, int end, String text) {}
+    private record Validated(String sql, boolean startsWithCte, boolean leadingSeparator) {}
 
     private SqlInput() {}
 
@@ -42,11 +43,23 @@ public final class SqlInput {
     }
 
     public static String validate(String sql, Dialect dialect) {
+        return inspect(sql, dialect).sql();
+    }
+
+    /** SQL Server's JDBC getMetaData prepends SET FMTONLY ON without a terminator. */
+    static String forMetadata(String sql, Dialect dialect) {
+        Validated validated = inspect(sql, dialect);
+        return dialect == Dialect.SQLSERVER && validated.startsWithCte() && !validated.leadingSeparator()
+                ? ";" + validated.sql() : validated.sql();
+    }
+
+    private static Validated inspect(String sql, Dialect dialect) {
         if (sql == null || sql.isBlank()) throw new GenerationException("Enter a SELECT statement.");
         List<String> words = new ArrayList<>();
         List<Replacement> replacements = new ArrayList<>();
         SqlConditionContext conditions = new SqlConditionContext(sql);
         int terminal = -1;
+        boolean started = false, leadingSeparator = false;
         for (int i = 0; i < sql.length();) {
             char c = sql.charAt(i);
             if (Character.isWhitespace(c)) { i++; continue; }
@@ -75,6 +88,7 @@ public final class SqlInput {
                         throw new GenerationException("A Doma %expand directive must be followed by *. Check Metadata SQL.");
                     }
                     replacements.add(new Replacement(start, star + 1, expansion(comment.substring(7).strip())));
+                    started = true;
                     i = star + 1;
                 } else if (comment.startsWith("%")) {
                     if (terminal >= 0) throw new GenerationException("Only one SELECT statement is allowed.");
@@ -86,6 +100,12 @@ public final class SqlInput {
                 continue;
             }
             if (terminal >= 0) throw new GenerationException("Only one SELECT statement is allowed.");
+            if (c == ';' && dialect == Dialect.SQLSERVER && !started) {
+                leadingSeparator = true;
+                i++;
+                continue;
+            }
+            started = true;
             if (c == ';') { conditions.symbol(c, i); terminal = i++; continue; }
             if (c == '?') throw new GenerationException("Replace JDBC parameters (?) with typed test literals.");
             if (c == '\'' || c == '"' || c == '`' || c == '[') {
@@ -132,13 +152,17 @@ public final class SqlInput {
                 || !words.contains("SELECT")) {
             throw new GenerationException("Enter a SELECT or a WITH ... SELECT statement.");
         }
+        boolean startsWithCte = words.get(0).equals("WITH");
+        if (leadingSeparator && !startsWithCte) {
+            throw new GenerationException("A leading statement separator is supported only before a SQL Server WITH ... SELECT.");
+        }
         if (terminal >= 0) replacements.add(new Replacement(terminal, terminal + 1, ""));
         StringBuilder prepared = new StringBuilder(sql);
         for (int index = replacements.size() - 1; index >= 0; index--) {
             Replacement replacement = replacements.get(index);
             prepared.replace(replacement.start, replacement.end, replacement.text);
         }
-        return prepared.toString();
+        return new Validated(prepared.toString(), startsWithCte, leadingSeparator);
     }
 
     private static String expansion(String argument) {

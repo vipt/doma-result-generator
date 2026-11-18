@@ -10,6 +10,17 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class JdbcErrorDetailsTest {
+    @Test void sqlServer319ExplainsCteMetadataSyntaxWithoutDisplayingPrivateDriverText() {
+        var error = new SQLException("WITH private_table AS (...) SELECT private_column password=secret", "S0001", 319);
+        var info = JdbcErrorDetails.describe(error, JdbcErrorDetails.Stage.READING_COLUMNS, false);
+        assertTrue(info.details().contains("SQL Server 319"));
+        assertTrue(info.details().contains("preceding statement separator"));
+        assertTrue(info.details().contains("Automatic (JDBC URL)"));
+        for (String value : new String[] { "private_table", "private_column", "password", "secret" }) {
+            assertFalse((info.summary() + info.details()).contains(value));
+        }
+    }
+
     @Test void reportsOracleVendorNumberAndPhaseEvenWhenOnlySqlStateWasPreviouslyVisible() {
         var error = new SQLException("private driver message with password=do-not-display", "72000", 17023);
         var info = JdbcErrorDetails.describe(error, JdbcErrorDetails.Stage.READING_COLUMNS, true);

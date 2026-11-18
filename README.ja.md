@@ -128,6 +128,8 @@ WHERE 1=1
 
 **Metadata SQL → SQL syntax**は、初期状態ではJDBC URLからPostgreSQL・MySQL/MariaDB・SQL Serverを判別し、その他はOracleなど向けの非ネストコメントとして解析します。PostgreSQL・SQL Serverではネストコメント、MySQLではバックスラッシュの文字列エスケープに対応します。MySQLの`NO_BACKSLASH_ESCAPES`やPostgreSQLの従来の文字列エスケープ設定を使う場合は、対応する選択肢に切り替えてください。自動選択はDBセッションのモードを問い合わせるものではありません。
 
+SQL Serverで先頭が`WITH`のCTEを使う場合も、SQLファイルを編集する必要はありません。Microsoft JDBCのメタデータ取得処理はSQLの前に`SET FMTONLY ON`を付けるため、プラグインはJDBCへ渡すSQLにだけ文の区切り`;`を補います。Metadata SQL欄の先頭へ手動追加する必要もなく、既にある`;WITH`も受け付けます。**SQL syntax**は**Automatic (JDBC URL)**または**SQL Server**を選択してください。エラー319が残る場合は、**Error details...**からCTE構文と区切りに関する案内を確認できます。[Microsoft JDBCの実装](https://github.com/microsoft/mssql-jdbc/blob/v12.8.1/src/main/java/com/microsoft/sqlserver/jdbc/SQLServerPreparedStatement.java)を参照しています。
+
 `SELECT ... FOR UPDATE`・`NOWAIT`・`OF ...`・`SKIP LOCKED`などのロック句を含むSELECTも受け付けます。SQLは準備・メタデータ取得にのみ使い、実行しません。複数文や更新文を含むCTEは引き続き拒否します。
 
 SQLStateだけではOracleエラーの原因を特定できないことがあります。**Error details...**でORA番号・ベンダー番号・失敗した段階を確認してください。同じSQLがSQLクライアントで実行できる場合は、JDBCドライバーや接続セッションの現在のスキーマなどの違いを切り分けます。不具合報告にはコードと段階のみを使い、接続情報やパスワードを含めないでください。
@@ -197,7 +199,7 @@ Eclipse本体を取得せずにコアのテストだけ実行する場合:
 
 [doma-gen](https://github.com/domaframework/doma-gen)はアーカイブ済みで、後継の[doma-codegen-plugin](https://github.com/domaframework/doma-codegen-plugin)が案内されています。Doma 2向けは後継ツールの2系です。公式にもSQLの結果から生成する機能があり、このプラグインではEclipse上でのSQL選択・接続設定・プレビュー・ファイル生成を提供します。
 
-公式の標準型マッピングを参照し、TINYINTからShortへの変換、SQLXML型の対応を反映しました。現状は独立した実装で、公式ソースやGradle/Antの実行環境は同梱していません。公式の結果セット読み取り処理はSELECTを実行しますが、この試作版は実行前メタデータを利用します。詳細と参照ソースは[英語README](README.md#relationship-to-the-official-generator)にまとめています。
+本プラグインはdoma-genを直接呼び出していません。列情報取得・新規クラス生成・既存クラスへの差分更新は独自実装です。公式の標準型マッピングを参照し、TINYINTからShortへの変換、SQLXML型の対応を反映しました。公式ソースやGradle/Antの実行環境は同梱していません。公式の結果セット読み取り処理はSELECTを実行しますが、この試作版は実行前メタデータを利用します。詳細と参照ソースは[英語README](README.md#relationship-to-the-official-generator)にまとめています。
 
 ## オープンソースとしての公開
 

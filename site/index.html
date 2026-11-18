@@ -46,6 +46,7 @@
         <li><code>name.properties</code>の正規表現で、名前に一致するプロパティのJava型を指定。</li>
         <li><strong>Metadata SQL → SQL syntax</strong>でコメント・文字列のDB別の規則を選択。JDBC URLによる自動判別、<code>FOR UPDATE</code>付きSELECTにも対応。</li>
         <li>WHERE／HAVING内の入れ子の<code>/*%if ...*/</code>・<code>/*%end*/</code>はSQLを書き換えずに利用。すべての検索条件本文とテスト値を使い、列情報を取得します。</li>
+        <li>SQL Serverの<code>WITH</code>で始まるCTEも、そのまま利用。JDBCのメタデータ取得時に必要な文の区切りを内部で補います（エラー319への対応）。</li>
         <li>既存クラスは <strong>Preview → 差分比較 → Update</strong>で更新。手動メソッドやコメントを保持し、衝突がある場合は更新を停止。</li>
         <li>接続待ちでも進捗ダイアログの<strong>Cancel</strong>でPreviewの待機を中止。<strong>Preview timeout (seconds)</strong>で待ち時間の上限を設定（初期値30秒）。遅れて返った結果は適用しません。</li>
       </ul>
@@ -96,6 +97,7 @@
         <li>Override property types with ordered, regex-based <code>name.properties</code> rules.</li>
         <li>Choose dialect-aware comment/string rules under <strong>Metadata SQL → SQL syntax</strong>, with automatic JDBC URL selection and support for locking SELECTs.</li>
         <li>Use nested <code>/*%if ...*/</code>/<code>/*%end*/</code> filters in WHERE/HAVING without editing SQL. Column metadata uses all filter bodies and test literals.</li>
+        <li>Use SQL Server CTEs starting with <code>WITH</code> unchanged. The required statement separator is supplied internally for JDBC metadata lookup (error 319).</li>
         <li>Review existing-class changes before <strong>Update</strong>, retaining handwritten methods and comments. Conflicts stop the update.</li>
         <li>Share named connection profiles across projects in one workspace. Remember each project's last profile and Package, with optional encrypted password storage in Eclipse Secure Storage.</li>
         <li>Cancel the preview wait from its progress dialog even while connecting. Set <strong>Preview timeout (seconds)</strong> to limit the wait (default: 30 seconds). Late results are discarded.</li>

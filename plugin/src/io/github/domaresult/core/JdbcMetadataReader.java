@@ -35,7 +35,7 @@ public final class JdbcMetadataReader {
             TypeNameMappings mappings, Consumer<JdbcErrorDetails.Stage> progress, SqlInput.Dialect dialect,
             PreviewExecution.Cancellation cancellation) throws SQLException {
         cancellation.check();
-        String prepared = SqlInput.validate(sql, dialect);
+        String prepared = SqlInput.forMetadata(sql, dialect);
         progress.accept(JdbcErrorDetails.Stage.PREPARING_SQL);
         PreparedStatement statement = connection.prepareStatement(prepared);
         try (statement) {
