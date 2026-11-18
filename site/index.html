@@ -45,11 +45,11 @@
         <li>接続プロファイルをワークスペース内で共有し、別プロジェクトでも選択して利用。前回の選択とPackageはプロジェクトごとに保持。パスワードの暗号化保存は任意。</li>
         <li><code>name.properties</code>の正規表現で、名前に一致するプロパティのJava型を指定。</li>
         <li><strong>Metadata SQL → SQL syntax</strong>でコメント・文字列のDB別の規則を選択。JDBC URLによる自動判別、<code>FOR UPDATE</code>付きSELECTにも対応。</li>
-        <li><strong>公式doma-genのResultSetMetaReader</strong>にSQLを直接渡し、SELECT結果の列情報から生成します。DAO引数の入力は不要です。</li>
-        <li>Doma本体の実行時パーサー・式評価器・独自の分岐選択は使いません。SQLのコメントとテスト値を保持してJDBCへ渡します。</li>
-        <li>Package・Class name・SQL・接続設定でPreviewできます。Argumentsと式用クラスパスの追加機能は撤去しました。</li>
-        <li>Previewでは公式ツールと同様にSELECTを実行します。条件・ループのコメントを含め、SQL自体が接続先で直接実行できる必要があります。</li>
-        <li>SQL Serverの<code>WITH</code>で始まるCTEも、そのまま利用。JDBCのメタデータ取得時に必要な文の区切りを内部で補います（エラー319への対応）。</li>
+        <li><strong>Doma本体でテンプレートを処理してから、公式doma-genのResultSetMetaReaderで列情報を取得</strong>します。ダミー引数は自動で用意し、引数入力と元SQLの書き換えは不要です。</li>
+        <li>SQLの解析・条件判定・ループ・埋め込み変数・不要なAND/ORの除去は、変更していないDoma標準の処理を使用。値のバインドにもDomaを使います。</li>
+        <li>DAOの宣言型とSQLのテスト値からダミー引数を作成。DTO・定数はプロジェクトのクラスパスから自動で読み込みます。先にプロジェクトをビルドしてください。</li>
+        <li>PreviewではSELECTを実行して列情報を取得します。0件の結果でも生成できます。取得列が引数で変わるSQLでは、ダミー値で選ばれた経路の<strong>Proposed Java</strong>を確認してください。</li>
+        <li>SQL Serverの<code>WITH</code>で始まるCTEにも対応。ラッパーや<code>SET FMTONLY</code>は挿入しません。</li>
         <li>既存クラスは <strong>Preview → 差分比較 → Update</strong>で更新。手動メソッドやコメントを保持し、衝突がある場合は更新を停止。</li>
         <li>接続待ちでも進捗ダイアログの<strong>Cancel</strong>でPreviewの待機を中止。<strong>Preview timeout (seconds)</strong>で待ち時間の上限を設定（初期値30秒）。遅れて返った結果は適用しません。</li>
       </ul>
@@ -99,11 +99,11 @@
         <li>Generate private fields and public getters/setters through <strong>doma-gen's generation APIs</strong>, using imports and short annotation/property type names.</li>
         <li>Override property types with ordered, regex-based <code>name.properties</code> rules.</li>
         <li>Choose dialect-aware comment/string rules under <strong>Metadata SQL → SQL syntax</strong>, with automatic JDBC URL selection and support for locking SELECTs.</li>
-        <li>Pass SQL directly to the official <strong>doma-gen ResultSetMetaReader</strong>. No DAO arguments are required.</li>
-        <li>No Doma runtime parser, expression evaluator or custom branch selection. SQL comments and test literals pass through to JDBC.</li>
-        <li>Package・Class name・SQL・接続設定でPreviewできます。Argumentsと式用クラスパスの追加機能は撤去しました。</li>
-        <li>The official reader executes the SELECT and reads result metadata. SQL must be directly executable with comments intact.</li>
-        <li>Use SQL Server CTEs starting with <code>WITH</code> unchanged. The required statement separator is supplied internally for JDBC metadata lookup (error 319).</li>
+        <li><strong>Doma processes the template before the official doma-gen ResultSetMetaReader describes its results.</strong> Dummy arguments are supplied automatically; no argument input or source SQL edits are needed.</li>
+        <li>Unmodified Doma parsing, expression evaluation, IF/FOR processing, embedded directives and redundant AND/OR removal. Doma also binds typed dummy values.</li>
+        <li>Dummy values use DAO parameter types and SQL test literals. DTOs and constants load from the project's runtime classpath automatically; build the project first.</li>
+        <li>Preview executes the SELECT and reads metadata even for an empty result. If arguments change projected columns, review <strong>Proposed Java</strong> for the path selected with dummy values.</li>
+        <li>Use SQL Server CTEs starting with <code>WITH</code>, without injected wrappers or SET FMTONLY preambles.</li>
         <li>Review existing-class changes before <strong>Update</strong>, retaining handwritten methods and comments. Conflicts stop the update.</li>
         <li>Share named connection profiles across projects in one workspace. Remember each project's last profile and Package, with optional encrypted password storage in Eclipse Secure Storage.</li>
         <li>Cancel the preview wait from its progress dialog even while connecting. Set <strong>Preview timeout (seconds)</strong> to limit the wait (default: 30 seconds). Late results are discarded.</li>
@@ -126,7 +126,7 @@
       </ol>
       <p class="note"><strong>UI Prompt still uses encrypted Eclipse Secure Storage.</strong> Only the way Eclipse obtains the master password changes. The setting affects newly saved information throughout Eclipse; existing entries are not migrated automatically. See the official <a href="https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-prefs.htm">preferences guide</a> and <a href="https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-works.htm">how Secure Storage works</a>.</p>
       <p>Requires Eclipse Java IDE <strong>2023-12 / 4.30+</strong>, <strong>Java 17+</strong>, a Doma 2 project and a JDBC driver.</p>
-      <p class="note">Initial preview. Tests use H2, Doma 2.57.0 and doma-gen 2.28.0. Preview executes the SELECT through the official generator and reads result metadata. DAO conditions, loops and embedded directives are not interpreted; the SQL itself must be directly executable. No custom branch selection or SQL repair is added. Source files are unchanged. Database-specific and manual comparison checks remain open.</p>
+      <p class="note">Initial preview. Tests use H2, Doma 2.57.0 and doma-gen 2.28.0. Automatic dummy arguments feed Doma's standard parser/evaluator/SQL builder, then the official generator executes the prepared SELECT and reads result metadata. Source SQL and the displayed template stay unchanged. Build the project for DTOs/constants; unsupported constructors, dependencies or standard Doma syntax produce an error. Projection-dependent templates describe one selected path. No custom branch selection, SQL repair or raw-SQL fallback is added. Database-specific checks remain open.</p>
       <p class="links"><a href="https://github.com/vipt/doma-result-generator/blob/main/README.md">Documentation</a><a href="https://github.com/vipt/doma-result-generator">Source</a><a href="https://github.com/vipt/doma-result-generator/issues">Issues</a></p>
     </section>
   </main>

@@ -2,6 +2,7 @@
 package io.github.domaresult.ui;
 
 import io.github.domaresult.core.GenerationException;
+import io.github.domaresult.core.DomaSql;
 import io.github.domaresult.core.JavaNames;
 import io.github.domaresult.core.JdbcDriverLoader;
 import io.github.domaresult.core.JdbcErrorDetails;
@@ -12,6 +13,7 @@ import io.github.domaresult.core.SqlInput;
 import io.github.domaresult.core.SourceUpdatePlan;
 import io.github.domaresult.core.TypeNameMappings;
 import io.github.domaresult.eclipse.WorkspaceClassUpdater;
+import io.github.domaresult.eclipse.SqlProjectContext;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -173,7 +175,7 @@ final class GenerateDialog extends TitleAreaDialog {
                 "MySQL: NO_BACKSLASH_ESCAPES", "PostgreSQL: legacy backslash strings", "SQL Server" });
         sqlSyntax.select(0);
         sqlSyntax.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-        note(sqlPage, "Official doma-gen executes this SELECT to read result-column metadata. No DAO arguments or application classes are needed. Doma directives remain SQL comments; the SQL must be directly executable. The original file is unchanged.");
+        note(sqlPage, "Dummy arguments are prepared automatically from DAO types and SQL test literals. Doma processes the template; doma-gen executes the SELECT for column metadata. Build the project for DTOs and constants. No argument input or SQL-file edits are needed. Review projected columns when branches affect SELECT.");
         sql = new StyledText(sqlPage, SWT.BORDER | SWT.MULTI | SWT.H_SCROLL | SWT.V_SCROLL);
         sql.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
         sql.setText(initialSql);
@@ -435,7 +437,6 @@ final class GenerateDialog extends TitleAreaDialog {
             if (dialect == null) dialect = SqlInput.Dialect.fromJdbcUrl(jdbcUrl.getText());
             final SqlInput.Dialect selectedDialect = dialect;
             String query = SqlInput.validate(sql.getText(), selectedDialect);
-            if (!query.equals(sql.getText())) sql.setText(query);
             List<Path> paths = Arrays.stream(jars.getText().split(";"))
                     .filter(path -> !path.isBlank()).map(String::trim).map(Path::of).toList();
             String driver = driverClass.getText().trim();
@@ -459,18 +460,22 @@ final class GenerateDialog extends TitleAreaDialog {
                             throw new GenerationException("Cannot read the type mappings file. Check its path, permissions and UTF-8 encoding.");
                         }
                         String fresh;
-                        try (JdbcDriverLoader loader = new JdbcDriverLoader(paths)) {
+                        try (SqlProjectContext projectSql = SqlProjectContext.open(sqlFile);
+                                JdbcDriverLoader loader = new JdbcDriverLoader(paths)) {
                             cancellation.driverLoader(loader);
                             Thread thread = Thread.currentThread();
                             ClassLoader previous = thread.getContextClassLoader();
                             try {
                                 thread.setContextClassLoader(loader);
                                 cancellation.check();
+                                stage.set(JdbcErrorDetails.Stage.PROCESSING_TEMPLATE);
+                                var prepared = DomaSql.prepare(query, selectedDialect, url, projectSql.classLoader(),
+                                        projectSql::parameterTypes, cancellation);
                                 stage.set(JdbcErrorDetails.Stage.CONNECTING);
                                 var connection = loader.connect(driver, url, username, secret, timeoutSeconds);
                                 try (connection) {
                                     cancellation.track(connection);
-                                    var columns = new JdbcMetadataReader().read(connection, query, pkg + "." + name, mappings, stage::set, selectedDialect, cancellation, url);
+                                    var columns = new JdbcMetadataReader().read(connection, prepared, pkg + "." + name, mappings, stage::set, selectedDialect, cancellation, url);
                                     cancellation.check();
                                     stage.set(JdbcErrorDetails.Stage.GENERATING_CLASS);
                                     fresh = classUpdater.generate(target, pkg, name, columns);

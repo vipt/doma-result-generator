@@ -84,7 +84,7 @@ class SqlInputDialectTest {
     }
 
     @Test void officialReaderPreservesTheChosenSqlDialect() throws Exception {
-        String sql = "SELECT 'it\\'s' AS label";
+        String sql = "SELECT 'it''s' AS label";
         ResultSetMetaData metadata = (ResultSetMetaData) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[] { ResultSetMetaData.class },
                 (proxy, method, args) -> switch (method.getName()) {
                     case "getColumnCount" -> 1;
@@ -113,5 +113,11 @@ class SqlInputDialectTest {
                 });
         assertEquals(List.of(new ResultColumn("LABEL", "java.lang.String")),
                 new JdbcMetadataReader().read(connection, sql, "", TypeNameMappings.empty(), stage -> {}, SqlInput.Dialect.MYSQL));
+    }
+
+    @Test void unsupportedQuoteSyntaxIsReportedByDomaWithoutARewriteOrRawFallback() {
+        Connection connection=(Connection)Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{Connection.class},(p,m,a)->{throw new AssertionError("No JDBC call after a Doma parser error");});
+        var error=assertThrows(GenerationException.class,()->new JdbcMetadataReader().read(connection,"SELECT 'it\\'s' AS label","",TypeNameMappings.empty(),stage->{},SqlInput.Dialect.MYSQL));
+        assertTrue(error.getMessage().contains("DOMA2101"));
     }
 }

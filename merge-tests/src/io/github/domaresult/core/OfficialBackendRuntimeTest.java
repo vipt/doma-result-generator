@@ -3,6 +3,7 @@ package io.github.domaresult.core;
 
 import static org.junit.Assert.*;
 import java.util.List;
+import java.util.Map;
 import org.junit.Test;
 import org.osgi.framework.FrameworkUtil;
 import org.seasar.doma.extension.gen.Generator;
@@ -22,6 +23,9 @@ public class OfficialBackendRuntimeTest {
         assertEquals("io.github.domaresult.org.seasar.doma.doma-gen", FrameworkUtil.getBundle(org.seasar.doma.extension.gen.ResultSetMetaReader.class).getSymbolicName());
         String sql = "SELECT /*%if unknown*/ 1 /*%else*/ 2 /*%end*/ AS id";
         assertEquals(sql, SqlInput.validate(sql));
+        var prepared=DomaSql.prepare(sql,SqlInput.Dialect.SQLSERVER,"",getClass().getClassLoader(),Map.of(),new PreviewExecution.Cancellation());
+        assertTrue(prepared.sql().contains("2"));
+        assertFalse(prepared.sql().contains("/*%"));
     }
 
     @Test public void officialGeneratorWorksWithAnIsolatedJdbcContextClassLoader() throws Exception {
@@ -31,6 +35,7 @@ public class OfficialBackendRuntimeTest {
             thread.setContextClassLoader(jdbcLoader);
             assertTrue(new EntityGenerator().generate("example.result", "DriverContextResult", List.of(new ResultColumn("ID", "java.lang.Long"))).contains("private Long id;"));
             assertEquals("SELECT /*id*/1 AS id", SqlInput.validate("SELECT /*id*/1 AS id"));
+            assertEquals(1,DomaSql.prepare("SELECT /*id*/1 AS id",SqlInput.Dialect.STANDARD,"",getClass().getClassLoader(),Map.of(),new PreviewExecution.Cancellation()).parameterCount());
             assertSame(jdbcLoader, thread.getContextClassLoader());
         } finally { thread.setContextClassLoader(previous); }
     }

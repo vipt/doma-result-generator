@@ -19,7 +19,7 @@ class OfficialDomaGenResultTest {
         int[] calls={0,0,0};
         try(var real=database()) {
             Connection guarded=(Connection)Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{Connection.class},(p,m,a)->{
-                assertEquals("prepareStatement",m.getName());assertEquals(sql,a[0]);
+                assertEquals("prepareStatement",m.getName());assertEquals("SELECT id, name FROM employee WHERE id=?",a[0]);
                 PreparedStatement statement=real.prepareStatement((String)a[0]);
                 return Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{PreparedStatement.class},(s,c,v)->{
                     if(c.getName().equals("getMetaData"))fail("Use ResultSet metadata, as doma-gen does");
@@ -41,7 +41,7 @@ class OfficialDomaGenResultTest {
         }
     }
 
-    @Test void domaCommentsAndTestLiteralsPassDirectlyToJdbcWithoutDaoArguments() throws Exception {
+    @Test void domaProcessesCommentsAndTestLiteralsWithoutManualArguments() throws Exception {
         String sql="""
                 SELECT DISTINCT id, name FROM employee
                 WHERE 1=1
@@ -59,23 +59,24 @@ class OfficialDomaGenResultTest {
         }
     }
 
-    @Test void aBindLookingCommentBeforeAColumnIsNotParsedAsADomaRuntimeExpression() throws Exception {
+    @Test void malformedDomaBindDirectivesAreReportedByTheOfficialParser() throws Exception {
         try(var connection=database()) {
             String sql="SELECT /* columnName */id FROM employee WHERE id=/*id*/1";
-            assertEquals(List.of(new ResultColumn("ID","java.lang.Long")),new JdbcMetadataReader().read(connection,sql));
+            assertTrue(assertThrows(GenerationException.class,()->new JdbcMetadataReader().read(connection,sql)).getMessage().contains("DOMA2142"));
         }
     }
 
-    @Test void conditionalCommentsDoNotSelectBranchesOrLoadApplicationClasses() throws Exception {
-        String sql="SELECT id /*%if @missing.Class@enabled()*/, name /*%else*/, 'x' AS label /*%end*/ FROM employee";
+    @Test void domaSelectsAProjectionBranchWithAutomaticBooleanArguments() throws Exception {
+        String sql="SELECT id /*%if includeName*/, name /*%else*/, 'x' AS label /*%end*/ FROM employee";
         try(var connection=database()) {
-            assertEquals(3,new JdbcMetadataReader().read(connection,sql).size());
+            var columns=new JdbcMetadataReader().read(connection,sql);
+            assertEquals(2,columns.size());assertEquals("LABEL",columns.get(1).label());
         }
     }
 
-    @Test void expansionCommentsRemainCommentsAndJdbcDescribesTheActualStar() throws Exception {
+    @Test void domaExpandsAConstantTableAliasForJdbcColumnDiscovery() throws Exception {
         try(var connection=database()) {
-            String sql="SELECT /*%expand unknownAlias*/* FROM employee";
+            String sql="SELECT /*%expand \"e\"*/* FROM employee e";
             assertEquals(sql,SqlInput.validate(sql));
             assertEquals(2,new JdbcMetadataReader().read(connection,sql).size());
         }

@@ -3,10 +3,12 @@ package io.github.domaresult.core;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
+import java.lang.reflect.Type;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.function.Consumer;
 import javax.sql.DataSource;
 import org.seasar.doma.extension.gen.GenException;
@@ -15,7 +17,7 @@ import org.seasar.doma.extension.gen.dialect.GenDialect;
 import org.seasar.doma.extension.gen.dialect.GenDialectRegistry;
 import org.seasar.doma.extension.gen.dialect.StandardGenDialect;
 
-/** Uses doma-gen's SQL-result reader, without a Doma runtime parser or evaluator. */
+/** Doma builds the SELECT and parameters; doma-gen reads its result metadata. */
 public final class JdbcMetadataReader {
     public List<ResultColumn> read(Connection connection, String sql) throws SQLException {
         return read(connection, sql, "", TypeNameMappings.empty());
@@ -39,8 +41,23 @@ public final class JdbcMetadataReader {
     public List<ResultColumn> read(Connection connection, String sql, String className, TypeNameMappings mappings,
             Consumer<JdbcErrorDetails.Stage> progress, SqlInput.Dialect syntax,
             PreviewExecution.Cancellation cancellation, String jdbcUrl) throws SQLException {
+        return read(connection, sql, className, mappings, progress, syntax, cancellation, jdbcUrl,
+                JdbcMetadataReader.class.getClassLoader(), Map.of());
+    }
+    public List<ResultColumn> read(Connection connection, String sql, String className, TypeNameMappings mappings,
+            Consumer<JdbcErrorDetails.Stage> progress, SqlInput.Dialect syntax,
+            PreviewExecution.Cancellation cancellation, String jdbcUrl, ClassLoader projectClasses,
+            Map<String, Type> parameterTypes) throws SQLException {
         cancellation.check();
-        String query = SqlInput.validate(sql, syntax);
+        progress.accept(JdbcErrorDetails.Stage.PROCESSING_TEMPLATE);
+        var prepared = DomaSql.prepare(sql, syntax, jdbcUrl, projectClasses, parameterTypes, cancellation);
+        return read(connection, prepared, className, mappings, progress, syntax, cancellation, jdbcUrl);
+    }
+    public List<ResultColumn> read(Connection connection, DomaPreparedSelect prepared, String className, TypeNameMappings mappings,
+            Consumer<JdbcErrorDetails.Stage> progress, SqlInput.Dialect syntax,
+            PreviewExecution.Cancellation cancellation, String jdbcUrl) throws SQLException {
+        cancellation.check();
+        String query = prepared.sql();
         GenDialect dialect = dialect(syntax, jdbcUrl);
         // The official reader owns this borrowed handle; the dialog owns the real connection.
         Connection borrowed = (Connection) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{Connection.class}, (p, method, args) -> {
@@ -48,8 +65,15 @@ public final class JdbcMetadataReader {
             if (method.getName().equals("prepareStatement")) {
                 cancellation.check(); progress.accept(JdbcErrorDetails.Stage.PREPARING_SQL);
                 PreparedStatement statement = (PreparedStatement) invoke(method, connection, args);
-                try { cancellation.track(statement); }
-                catch (RuntimeException failure) { statement.close(); cancellation.release(statement); throw failure; }
+                try {
+                    cancellation.track(statement);
+                    prepared.bind(statement);
+                }
+                catch (SQLException | RuntimeException | Error failure) {
+                    try { statement.close(); } catch (SQLException close) { failure.addSuppressed(close); }
+                    finally { cancellation.release(statement); }
+                    throw failure;
+                }
                 return Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{PreparedStatement.class}, (s, call, values) -> {
                     if (call.getName().equals("executeQuery")) {
                         cancellation.check(); progress.accept(JdbcErrorDetails.Stage.EXECUTING_SELECT);
@@ -95,7 +119,7 @@ public final class JdbcMetadataReader {
             for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
                 if (cause instanceof SQLException failure) throw failure;
             }
-            throw new GenerationException("Official doma-gen could not read the SELECT result. Check directly executable Metadata SQL and supported column types.");
+            throw new GenerationException("Official doma-gen could not read the SELECT result. Check Metadata SQL, project classes and supported column types.");
         }
     }
     private static Object invoke(java.lang.reflect.Method method, Object target, Object[] args) throws Throwable {

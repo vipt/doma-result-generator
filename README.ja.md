@@ -12,7 +12,7 @@ SELECTの結果を格納するDoma 2用のJavaクラスを生成する、独立�
 2. Package Explorer・Project ExplorerのSQLファイル、または開いているSQLファイルのエディター上で右クリックし、**Generate Doma Result Class...**を選びます。
 3. **Connection profile**で登録済みの接続を選ぶか、JDBCドライバーのJAR、ドライバークラス、接続URL、ユーザー名・パスワードを入力します。依存JARがある場合は複数指定できます。
 4. 出力先のソースフォルダー、パッケージ、クラス名を指定します。名前から型を指定する場合は**Type mappings (optional)**で設定ファイルを選びます。プロジェクト直下に`name.properties`があれば初期選択されます。
-5. **Metadata SQL**でテンプレートを確認し、接続先で直接実行できるSELECTであることを確認して**Preview**を押します。
+5. **Metadata SQL**でテンプレートを確認し、**Preview**を押します。ダミー引数は自動で用意され、Doma本体がSQLを組み立てます。DTO・定数を参照する場合は、先にプロジェクトをビルドしてください。
 6. **Proposed Java**で結果を確認します。新規クラスは**Generate**、既存クラスは差分を確認して**Update**を押します。
 
 `@Entity`、列の別名に対応する`@Column`、privateフィールド、publicのgetter/setterを生成します。アノテーションとプロパティの型をimportし、`@Column`・`BigDecimal`・`LocalDateTime`などの短い型名で出力します。`java.lang`の型と、エンティティと同じパッケージの型はimport不要です。同名の型や手動コードと衝突する場合は、その参照だけ完全修飾名を使います。既存クラスは差分確認後に更新できます。DAOやプロジェクト設定は変更しないため、生成したクラスをDAOの戻り値に指定してください。
@@ -91,21 +91,25 @@ UTF-8 BOM付きの既存クラスも更新でき、BOMは保存時に維持し�
 - NULLに対応できるラッパー型、BigDecimal、String、byte[]、LocalDate/LocalTime/LocalDateTime、LOB型などを生成します。
 - 詳細な型対応表は[英語README](README.md#type-mapping)を参照してください。
 
-### 公式doma-genと同じSQL結果からの生成
+### Doma本体で処理してから公式doma-genで生成
 
-**doma-gen 2.28.0の`ResultSetMetaReader.read(sql)`を直接呼び出します。** 公式Antタスクの`entityConfig(sql: ...)`と同じSQL結果からの生成経路です。DAO実行時のパーサー・式評価器、Arguments入力、プロジェクトクラスの読み込み、サンプル引数の自動作成、独自の条件・ループ処理は使いません。
+**Doma 2.57.0の`SqlParser`・`ExpressionEvaluator`・`NodePreparedSqlBuilder`でテンプレートを処理し、doma-gen 2.28.0の`ResultSetMetaReader.read(sql)`へ渡します。** SQLの解析、条件判定、ループ、埋め込み変数、不要な`AND`・`OR`の除去は、変更していないDoma本体の処理です。独自のSQLパーサー、式評価器、分岐選択・SQL補正、失敗時の生SQLへの切り替えは追加しません。
 
-JDBC接続、**Metadata SQL**のSELECT、出力先のPackage・Class nameを指定してPreviewします。公式リーダーは**`executeQuery()`でSELECTを実行し、結果セットの`getMetaData()`で列情報を読み取ります。** 結果行を順番に取得する処理は呼びませんが、DBではSELECTが実行されます。既存のキャンセル・タイムアウト、接続プロファイル、差分比較・手動コード保持は継続します。
+引数の入力画面はありません。プラグインはDomaの解析済みノードから必要な引数名を取得し、`META-INF/<DAOの完全修飾名>/<メソッド名>.sql`に対応するDAOの宣言型、ジェネリック型、SQL中のテストリテラルを手掛かりにダミー引数を自動作成します。数値・文字列・真偽値・日時・配列・要素1件のコレクション、引数なしコンストラクターを持つDTO、recordなどに対応します。DTOの基本フィールドとSQLが参照する入れ子のDTOにも値を設定します。実際の検索条件や一致するデータは不要で、0件の結果でも列情報を取得できます。
 
-SQLはコメントを保持したままJDBCへ渡します。`/*id*/1`、`%if`・`%else`・`%for`、埋め込み変数、`%expand`などをDAOの指示として解釈しません。DBはSQL中のリテラルを使います。DAO引数を扱わないため`Missing argument`は発生せず、アプリケーションのクラスやメソッドも呼び出しません。
+DTO・定数・アプリケーションのメソッドは、プロジェクトと参照先のビルド済みクラス・依存JARから自動で読み込みます。追加のクラスパス入力は不要です。DTO型を特定できない場合や必要なコンストラクター・クラスがない場合は、プロジェクトのビルド・DAO宣言・依存関係を確認するエラーを表示します。架空のDTOや代替メソッドの結果は作成しません。基本型だけの独立したSQLでは、テストリテラルや式の型から引数を用意できます。
 
 ```sql
-SELECT e.id, e.name FROM employee e WHERE e.id = /*id*/1
+SELECT e.id, e.name FROM employee e WHERE AND e.id = /*id*/1
 ```
 
-このように接続先で直接実行できるSELECTなら、引数入力なしで利用できます。動的なDAOテンプレートでも、コメントを残したSQL自体が実行可能であることが条件です。両方の分岐本文は残り、ループの展開やSQL断片の埋め込みは行いません。公式ツールにない分岐選択やSQL補正は追加しません。列別名の重複や`WHERE AND`などは、Metadata SQLで具体的なSELECTにする必要がある場合があります。`%expand`もコメントとして扱うため、その別名式は評価されず、後ろの`*`はDBの全列を表します。JOIN先の特定テーブルだけを取得する場合は`e.*`を明示してください。
+この例では、Domaが先頭の`AND`を除去し、`e.id = ?`を組み立てます。バインド値の設定もDoma標準の`PreparedSqlParameterBinder`が行います。元SQLファイルも、表示中のMetadata SQLも自動では書き換えません。`%expand`はDomaの拡張フックへ列情報取得用の`*`を渡し、別名の評価・付与はDomaに任せます。`/*%expand "e"*/*`は`e.*`となり、DBが返す実際の列を取得します。
 
-入力チェックは、更新を含まない単一SELECTであること、選択したDBの引用・コメントの扱い、末尾の余分なセミコロンの除去に限ります。Domaの指示の構文を判定したり、内容を置き換えたりしません。SQL ServerのCTEも直接実行し、以前の`getMetaData()`・`SET FMTONLY`向けの区切り補正は使用しません。SQL構文やスキーマのエラーはJDBCドライバーから取得し、接続情報やSQL本文を含めず表示します。
+JDBC接続、**Metadata SQL**のテンプレート、出力先のPackage・Class nameを指定してPreviewします。公式リーダーは**`executeQuery()`でSELECTを実行し、結果セットの`getMetaData()`で列情報を読み取ります。** 結果行を順番に取得する処理は呼びませんが、DBではSELECTが実行されます。既存のキャンセル・タイムアウト、接続プロファイル、差分比較・手動コード保持は継続します。
+
+ダミー値で選ばれた1つの経路から生成します。引数がWHEREの絞り込みだけに使われる場合、通常は列名・型に影響しません。SELECT列・別名・型・JOIN先などが引数で変わるSQLでは、すべての経路を表すクラスになる保証はありません。**Proposed Javaで列構成を確認してください。** プロジェクトのメソッドは実際に呼ばれるため、ダミー値でも評価可能である必要があります。
+
+入力チェックは更新を含まない単一SELECTの確認を維持します。Domaが組み立てたSQLも実行前に確認します。SQL syntaxはこのチェックの引用・コメントの規則とDB方言を選びますが、Doma標準パーサーが受け付けない構文を独自に補正する設定ではありません。SQL ServerのCTEはラッパーや`SET FMTONLY`を挿入せず実行します。Domaのエラーコード・行番号、JDBCのコード・段階をSQL本文や引数値を含めず表示します。
 
 JDBC型からJava型への変換も公式の`GenDialect`を使います。既存のname.properties、privateフィールド、import、手動コード保持は継続します。ライブラリは更新サイトに同梱し、Ant・Gradleの別途インストールは不要です。元のSQLファイルは変更しません。
 
@@ -180,7 +184,7 @@ Eclipse本体を取得せずにコアのテストだけ実行する場合:
 
 Eclipseの接続プロファイル、プレビュー、既存クラスへの差分更新はプラグインが担当します。公式ライブラリと依存ライブラリは更新サイトに同梱し、GradleやAntコマンドの別途インストールは不要です。Antタスクとしてdoma-gen全体を起動する方式ではありません。
 
-DAO引数や実行時の式評価は使いません。SQLは公式`ResultSetMetaReader`へ渡し、SELECTを実行して列情報を取得します。型マッピング・名前規則と手動コード保持の仕様も維持します。詳細と参照ソースは[英語README](README.md#relationship-to-the-official-generator)、再配布ライブラリは[THIRD_PARTY_NOTICES](plugin/THIRD_PARTY_NOTICES)に記載しています。
+ダミー引数は自動で用意し、Doma本体でSQLを組み立ててから公式`ResultSetMetaReader`へ渡します。Doma標準の型付きバインド処理を使い、SELECTを実行して列情報を取得します。型マッピング・名前規則と手動コード保持の仕様も維持します。詳細と参照ソースは[英語README](README.md#relationship-to-the-official-generator)、再配布ライブラリは[THIRD_PARTY_NOTICES](plugin/THIRD_PARTY_NOTICES)に記載しています。
 
 ## オープンソースとしての公開
 

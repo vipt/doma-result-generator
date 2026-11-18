@@ -38,11 +38,13 @@ public final class SqlInput {
         return validate(sql, Dialect.STANDARD);
     }
 
-    public static String validate(String sql, Dialect dialect) { return inspect(sql, dialect); }
+    public static String validate(String sql, Dialect dialect) { return inspect(sql, dialect, false); }
+
+    static String validateJdbc(String sql, Dialect dialect) { return inspect(sql, dialect, true); }
 
     static String forMetadata(String sql, Dialect dialect) { return validate(sql, dialect); }
 
-    private static String inspect(String sql, Dialect dialect) {
+    private static String inspect(String sql, Dialect dialect, boolean prepared) {
         if (sql == null || sql.isBlank()) throw new GenerationException("Enter a SELECT statement.");
         List<String> words = new ArrayList<>();
         List<Replacement> replacements = new ArrayList<>();
@@ -81,7 +83,7 @@ public final class SqlInput {
             }
             started = true;
             if (c == ';') { terminal = i++; continue; }
-            if (c == '?') throw new GenerationException("Use concrete SQL values instead of JDBC parameters (?). doma-gen does not take DAO arguments.");
+            if (c == '?' && !prepared) throw new GenerationException("Use Doma bind comments with test literals instead of bare JDBC parameters (?). Arguments are supplied automatically.");
             if (c == '\'' || c == '"' || c == '`' || c == '[') {
                 int quotedStart = i;
                 char close = c == '[' ? ']' : c;
