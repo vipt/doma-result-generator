@@ -16,28 +16,28 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 class SqlInputDialectTest {
     @Test void nonNestedCommentsAllowPathsAndDoNotHideFollowingBindOrWriteTokens() {
-        String sql = "/* see META-INF/*.sql */ SELECT id FROM employee WHERE id = /* id */1";
+        String sql = "/** see META-INF/*.sql */ SELECT id FROM employee WHERE id = /* id */1";
         assertEquals(sql, SqlInput.validate(sql));
         assertEquals(sql, SqlInput.validate(sql, SqlInput.Dialect.MYSQL));
-        assertThrows(GenerationException.class, () -> SqlInput.validate("/* see META-INF/*.sql */ DELETE FROM employee; SELECT 1"));
+        assertThrows(GenerationException.class, () -> SqlInput.validate("/** see META-INF/*.sql */ DELETE FROM employee; SELECT 1"));
         assertThrows(GenerationException.class, () -> SqlInput.validate(sql, SqlInput.Dialect.POSTGRESQL));
-        String extraClose = "SELECT 1 AS a /* /* */ ; DELETE FROM t -- */";
+        String extraClose = "SELECT 1 AS a /** /* */ ; DELETE FROM t -- */";
         assertThrows(GenerationException.class, () -> SqlInput.validate(extraClose));
         assertEquals(extraClose, SqlInput.validate(extraClose, SqlInput.Dialect.POSTGRESQL));
         assertEquals(extraClose, SqlInput.validate(extraClose, SqlInput.Dialect.SQLSERVER));
     }
 
     @Test void nestedCommentsAreSupportedForPostgresqlAndSqlServer() {
-        String sql = "/* outer /* inner */ end */ SELECT 1";
+        String sql = "/** outer /* inner */ end */ SELECT 1";
         assertEquals(sql, SqlInput.validate(sql, SqlInput.Dialect.POSTGRESQL));
         assertEquals(sql, SqlInput.validate(sql, SqlInput.Dialect.SQLSERVER));
         assertThrows(GenerationException.class, () -> SqlInput.validate(sql));
-        String writeInside = "/* outer /* inner */ DELETE FROM employee */ SELECT 1";
+        String writeInside = "/** outer /* inner */ DELETE FROM employee */ SELECT 1";
         assertEquals(writeInside, SqlInput.validate(writeInside, SqlInput.Dialect.POSTGRESQL));
         assertThrows(GenerationException.class, () -> SqlInput.validate(writeInside, SqlInput.Dialect.MYSQL));
     }
 
-    @ParameterizedTest @ValueSource(strings = { "FOR UPDATE", "FOR UPDATE NOWAIT", "FOR UPDATE OF e.id", "FOR UPDATE SKIP LOCKED", "FOR NO KEY UPDATE", "FOR /* lock */ UPDATE" })
+    @ParameterizedTest @ValueSource(strings = { "FOR UPDATE", "FOR UPDATE NOWAIT", "FOR UPDATE OF e.id", "FOR UPDATE SKIP LOCKED", "FOR NO KEY UPDATE", "FOR /** lock */ UPDATE" })
     void acceptsLockingSelectsWithoutRewritingTheirMeaning(String locking) {
         String sql = "SELECT e.id FROM employee e WHERE e.id = /* id */1 " + locking;
         assertEquals(sql, SqlInput.validate(sql));

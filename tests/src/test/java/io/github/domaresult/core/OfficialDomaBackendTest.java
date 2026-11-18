@@ -42,22 +42,17 @@ class OfficialDomaBackendTest {
         assertFalse(official.matches("(?s).*\\b(?:WHERE|HAVING)\\s+(?:AND|OR)\\b.*"));
     }
 
-    @Test void usesTestValuesWithoutLoadingApplicationClassesOrEvaluatingConditions() {
-        String source = "SELECT /* @not.present.Values@ID */1 AS id WHERE /*%if @not.present.Functions@enabled() */ AND 1=1 /*%end*/";
-        String prepared = SqlInput.forMetadata(source, SqlInput.Dialect.SQLSERVER);
-        assertFalse(prepared.contains("/*%if"));
-        assertTrue(prepared.contains("1 AS id"));
-        assertTrue(prepared.contains("1=1"));
-        assertFalse(prepared.matches("(?s).*WHERE\\s+AND\\b.*"));
+    @Test void missingApplicationArgumentsOrClassesAreNotSilentlyReplacedWithTestValues() {
+        assertThrows(GenerationException.class, () -> SqlInput.forMetadata("SELECT /*missing*/1 AS id", SqlInput.Dialect.SQLSERVER));
     }
 
     @Test void preservesOpaqueSqlAndDoesNotConfuseUserTextWithAdapterPlaceholders() {
         String literal = "'__doma_result_opaque_0__ WHERE AND /*%else*/'";
-        String source = "SELECT " + literal + " AS [WHERE AND] FROM employee WHERE /* outer /* inner */ end */ AND id>0";
+        String source = "SELECT " + literal + " AS [WHERE AND] FROM employee WHERE /** outer /* inner */ end */ AND id>0";
         String prepared = SqlInput.forMetadata(source, SqlInput.Dialect.SQLSERVER);
         assertTrue(prepared.contains(literal));
         assertTrue(prepared.contains("[WHERE AND]"));
-        assertTrue(prepared.contains("/* outer /* inner */ end */"));
+        assertTrue(prepared.contains("/** outer /* inner */ end */"));
         assertFalse(prepared.contains("AND id>0"));
         assertEquals(prepared, SqlInput.forMetadata(prepared, SqlInput.Dialect.SQLSERVER));
     }
@@ -66,10 +61,10 @@ class OfficialDomaBackendTest {
         String source = """
                 SELECT h.id,
                   (SELECT CASE WHEN COUNT(*)>0 THEN 1 ELSE 0 END FROM detail d
-                   WHERE AND d.header_id=h.id AND d.state=/* @not.present.States@ACTIVE */'A') AS detail_count,
+                   WHERE AND d.header_id=h.id AND d.state='A') AS detail_count,
                   CAST(NULL AS VARCHAR(20)) AS optional_code
                 FROM header h WHERE AND h.deleted='0'
-                /*%if filter.minimum != null*/ AND h.id >= /* filter.minimum */0 /*%end*/
+                /*%if true*/ AND h.id >= 0 /*%end*/
                 """;
         try (var real = DriverManager.getConnection("jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=MSSQLServer")) {
             try (var setup = real.createStatement()) {

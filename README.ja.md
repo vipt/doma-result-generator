@@ -12,7 +12,7 @@ SELECTの結果を格納するDoma 2用のJavaクラスを生成する、独立�
 2. Package Explorer・Project ExplorerのSQLファイル、または開いているSQLファイルのエディター上で右クリックし、**Generate Doma Result Class...**を選びます。
 3. **Connection profile**で登録済みの接続を選ぶか、JDBCドライバーのJAR、ドライバークラス、接続URL、ユーザー名・パスワードを入力します。依存JARがある場合は複数指定できます。
 4. 出力先のソースフォルダー、パッケージ、クラス名を指定します。名前から型を指定する場合は**Type mappings (optional)**で設定ファイルを選びます。プロジェクト直下に`name.properties`があれば初期選択されます。
-5. **Metadata SQL**で型確認用SQLを確認し、**Preview**を押します。
+5. **Metadata SQL**でテンプレートを確認し、必要な型付き引数を**Arguments**に入力して**Preview**を押します。
 6. **Proposed Java**で結果を確認します。新規クラスは**Generate**、既存クラスは差分を確認して**Update**を押します。
 
 `@Entity`、列の別名に対応する`@Column`、privateフィールド、publicのgetter/setterを生成します。アノテーションとプロパティの型をimportし、`@Column`・`BigDecimal`・`LocalDateTime`などの短い型名で出力します。`java.lang`の型と、エンティティと同じパッケージの型はimport不要です。同名の型や手動コードと衝突する場合は、その参照だけ完全修飾名を使います。既存クラスは差分確認後に更新できます。DAOやプロジェクト設定は変更しないため、生成したクラスをDAOの戻り値に指定してください。
@@ -91,82 +91,60 @@ UTF-8 BOM付きの既存クラスも更新でき、BOMは保存時に維持し�
 - NULLに対応できるラッパー型、BigDecimal、String、byte[]、LocalDate/LocalTime/LocalDateTime、LOB型などを生成します。
 - 詳細な型対応表は[英語README](README.md#type-mapping)を参照してください。
 
-`/* employeeId */11`や`IN /* ids */(0)`のようなDomaのバインドコメントとテスト値はそのまま利用できます。単純な展開指定は、**Preview**時に次のように自動変換します。
+### Doma標準の評価とArguments
 
-```sql
-select /*%expand*/* from employee
--- Metadata SQL: select * from employee
+Doma Core 2.57.0の**`SqlParser`・`ExpressionEvaluator`・`NodePreparedSqlBuilder`・`PreparedSqlParameterBinder`をそのまま呼び出します。** 独自の分岐選択、条件本文の強制追加、サンプル要素によるループ、定数だけに制限した評価はありません。指定した引数で`%if/%elseif/%else`・`%for`・ループ制御変数・バインド・リテラル・埋め込みSQL・標準関数・アプリケーションのメソッドを評価します。
 
-select /*%expand "e" */* from employee e
--- Metadata SQL: select e.* from employee e
+**Arguments**タブに型付きJSONを入力するか、**Load JSON...**で読み込みます。
+
+```json
+{
+  "ids": {"type": "java.util.List<java.lang.String>", "value": ["A", "B"]},
+  "enabled": {"type": "boolean", "value": true},
+  "orderBy": {"type": "java.lang.String", "value": "ORDER BY name"},
+  "minimum": {"type": "java.lang.Long", "value": null}
+}
 ```
 
-変換結果は**Metadata SQL**タブで確認できます。元のSQLファイルは変更しません。別名は文字列リテラルに対応し、SQLの引用識別子も指定できます。動的な別名の式は評価しません。この変換ではDBの`*`または`alias.*`から列情報を取得するため、既存のDomaエンティティの定義にある項目だけを展開する処理とは列構成が異なる場合があります。
+引数ごとにJavaの`type`とJSONの`value`を指定します。原則として完全修飾型名を使い、java.langの型は短い名前も使えます。コレクションの要素型やnullの型も明示してください。プリミティブ型にnullは指定できません。配列・BigDecimal/BigInteger・ISO形式のLocalDate/LocalTime/LocalDateTime・java.sqlの日時型にも対応します。必要な引数がなければDomaのエラーを表示し、SQLのテスト値や推測値で補いません。選択されない分岐だけで使う引数は不要です。
 
-### 検索条件のDoma条件分岐
+条件オブジェクトにはコンパイル済みの型と、そのフィールドのJSONを指定します。
 
-既存のWHERE／HAVING句内にある`/*%if 条件 */ ... /*%end*/`は、入れ子を含めてそのまま利用できます。SQLファイルやMetadata SQLを手動で書き換える必要はありません。
-
-```sql
-SELECT e.id, e.name
-FROM employee e
-WHERE 1=1
-/*%if @isNotBlank(condition.name) */
-  AND e.name = /* condition.name */'sample'
-/*%end*/
-/*%if condition.first || condition.second */
-  AND e.status IN (''
-    /*%if condition.first */ ,'A' /*%end*/
-    /*%if condition.second */ ,'B' /*%end*/
-  )
-/*%end*/
+```json
+{
+  "condition": {
+    "type": "example.SearchCondition",
+    "value": {"name": "sample", "enabled": true}
+  }
+}
 ```
 
-テンプレートの構文・入れ子はDoma本体の`SqlParser`、条件式の構文は`ExpressionParser`、SQLの組み立ては`NodePreparedSqlBuilder`を使用します。プラグイン独自の条件構文や、独自の句追跡による対応範囲の制限は設けません。`WHERE AND ...`や`HAVING OR ...`の先頭の論理演算子も、本体と同じ組み立て処理で除去します。サブクエリ内にも適用され、SQLファイルやMetadata SQL欄の手動修正は不要です。
+**Use compiled project classes and dependencies for expressions**をオンにすると、参照プロジェクトを含む実行時クラスパスを読み込みます。先にプロジェクトをビルドし、そのクラスを読み込めるJavaでEclipseを起動してください。追加のJAR・クラスフォルダーは**Additional expression JARs/folders**にセミコロン区切りで指定します。Gsonでオブジェクトの値を構築し、Doma本体がプロパティ・フィールド・enum・メソッドを参照します。Previewではコンストラクター・getter・static初期化子・指定されたメソッドが実行される場合があります。標準関数はJDBC URLに対応するDomaのDialectを使います。アプリケーションやDIコンテナーの起動、DAO独自Configの自動再現は行いません。
 
-DAOの実行時引数を受け取らないため、アプリケーションの条件式やJavaコードは評価せず、単純な検索条件の本文とテスト値を含むSQLを組み立てます。定数とDomaのループ制御変数は、後述のとおりDoma本体で評価します。文字列・引用識別子・バインドコメントはアダプターで保護して元の内容へ戻します。条件コメントは表示上保持し、JDBC用SQLでは本体の組み立て結果に従います。結果行の取得は行いません。サブクエリ・CTE・UNION内の検索条件にも対応します。
+引数と式評価用クラスパスの編集内容は、生成ダイアログを開いている間だけ保持します。接続プロファイル・通常設定・プロジェクトファイル・ログには保存しません。読み込んだJSONファイルも変更しません。エラーはDomaのコードと、取得できる場合は不足する引数名・前処理後SQLの行番号を表示し、SQL本文・値・アプリケーションの例外本文は表示しません。呼び出したアプリケーションメソッド自身のログ出力・副作用は、そのコードの動作に従います。
 
-SELECTの取得式を`%if`・`%elseif`・`%else`で切り替えるSQLも、そのまま利用できます。
-
-```sql
-SELECT e.id
-/*%if options.exactName */
-  , CASE WHEN e.exact_name IS NULL THEN e.name ELSE e.exact_name END AS full_name
-/*%else*/
-  , e.name AS full_name
-/*%end*/
-FROM employee e
-```
-
-条件分岐はDoma本体のビルダーで分岐ごとにSQLを組み立て、DBから取得した**列名・順序・JDBC型がすべて一致する場合**に生成します。本体のパーサーが解析できるFROM・JOIN・ORDER BYの分岐も同様に確認します。型マッピングによる上書きがあってもJDBC型の差は見落としません。取得列の`%if`に`%else`がなければ、その列を含まない場合も比較します。UNION内などで同じ条件式の並びを繰り返す場合は、同じ分岐を選択します。独立した条件は組み合わせて最大**64通り**まで確認し、組み立て結果が同じSQLは重複確認しません。単純な検索条件内の`%if`・`%end`は本文を含めるため、組み合わせを増やしません。この判別もDomaの構文木を使い、独自にSQLを解析しません。各SQLは`getMetaData()`で確認し、SELECTの実行APIを呼び出さず、Preview全体のキャンセル・タイムアウトを適用します。
-
-分岐の列情報が異なる場合や組み合わせの上限を超える場合は、**Metadata SQL**で生成対象の具体的なSELECTを指定してください。構文不正はDoma本体が判定し、SQL本文を含めずDomaの診断コードと取得できる場合は前処理後SQLの行番号を案内します。プラグインには、確認対象の分岐やループのサンプルを選び、テスト値を残し、単純な展開指定をJDBC向けに変換する生成用アダプターが残ります。SELECTのみを受け付けるチェックも、テンプレート構文とは別に残します。DAOの引数やアプリケーションのJavaコードは評価せず、通常のDAO実行処理をそのまま再現するものではありません。
-
-### ループと固定SQLの埋め込み
-
-検索条件内のループも、そのまま利用できます。固定文字列の区切りを埋め込む場合も、SQLの書き換えは不要です。
+### 評価後のSQLと列情報
 
 ```sql
 SELECT e.id, e.name FROM employee e
 WHERE (
-  /*%for item : filter.ids */
-    e.id = /*item*/1
+  /*%for item : ids */
+    e.id = /*item*/'ignored'
     /*%if item_has_next */ /*# "OR" */ /*%end*/
   /*%end*/
 )
+/*# orderBy */
 ```
 
-単純な検索条件のループには、アダプターが2要素のサンプルを渡し、**Doma本体のループ処理**を呼びます。`item_has_next`・`item_index`の設定と評価も本体が行うため、要素間にだけ区切りを出力し、末尾には追加しません。値にはSQL内のテストリテラルを使い、サンプル要素自体の値は推測しません。インデックスの比較・否定・区切りの別分岐・入れ子・同名ループ変数の復元も本体の処理に従います。ループ対象の式からアプリケーションのメソッドを呼び出すことはありません。ループ内で評価する条件は制御変数・インデックスと定数に限り、アプリケーションの値に依存する条件は生成用アダプターの代表分岐で扱います。
+指定したリストの実際の要素数でループし、`item_has_next`・`item_index`もDoma本体が評価します。バインドコメントは`?`になり、指定した値をDoma標準のバインダーで設定してからJDBCメタデータを取得します。SQL内の`'ignored'`などのテスト値はDomaが無視します。取得列も指定した引数で選ばれるため、未選択の分岐を自動比較しません。引数で列構成が変わる場合は、生成先クラスや指定する引数を使い分けてください。従来の64通り・256サンプル要素という制限とサンプル展開は削除し、Preview全体のタイムアウト・キャンセルは引き続き適用します。
 
-`/*# "OR" */`や`/*# "O" + "R" */`などの固定式は、Doma本体の式評価と埋め込みSQLの検査を利用します。アプリケーションの変数・フィールド・メソッド・関数・コンストラクターは評価しないため、`/*# orderBy */`のような実行時のSQL断片はMetadata SQLで具体化してください。`/*^ item */1`のようなリテラル変数は、バインドコメントと同様にテスト値を残します。組み立て後もJDBCへ渡す前に、単一のSELECTであることを検査します。
+**Evaluated SQL**には、Domaが組み立てたSELECTを表示します。バインド値は`?`で伏せます。評価後にDB接続・メタデータ取得が失敗した場合も確認できます。**Metadata SQL**は元のテンプレートを保持し、保存済みSQLファイルは変更しません。SELECTの実行・結果取得APIは呼び出さず、選択された列構成だけを確認します。
 
-単純な検索条件以外のループでは、1要素・2要素の場合の列情報を比較します。要素数によって取得列が変わる場合は、単一の結果クラスに確定できないため生成を止めます。検索条件内のループは分岐の組み合わせを増やしません。64通りの組み合わせ上限に加え、入れ子を含むサンプルの展開は**組み立てるSELECTごとに256要素**までとします。実際の引数や任意の要素数を再現・保証するものではなく、列情報の確認用サンプルです。各確認にはPreview全体のキャンセル・タイムアウトを適用し、SELECTの実行APIは呼び出しません。
+`%expand`とその別名の式もDoma本体で処理します。生成先エンティティが未作成のため、列展開コールバックには`*`を渡し、DBに`*`・`alias.*`の列情報を問い合わせます。既存エンティティ定義から列一覧を得る方式ではありません。展開指定の直後に`*`を置くなど、Doma標準の構文に従ってください。説明用コメントには`/** ... */`・`-- ...`を使います。`/* name */`はDomaのバインド式であり、直後のテストリテラルが必要です。
 
-**Metadata SQL → SQL syntax**は、初期状態ではJDBC URLからPostgreSQL・MySQL/MariaDB・SQL Serverを判別し、その他はOracleなど向けの非ネストコメントとして解析します。PostgreSQL・SQL Serverではネストコメント、MySQLではバックスラッシュの文字列エスケープに対応します。MySQLの`NO_BACKSLASH_ESCAPES`やPostgreSQLの従来の文字列エスケープ設定を使う場合は、対応する選択肢に切り替えてください。自動選択はDBセッションのモードを問い合わせるものではありません。
+**Metadata SQL → SQL syntax**はJDBC URLから引用・コメントの扱いを選び、PostgreSQL・MySQL/MariaDB・SQL Server・Oracleなど向けの手動指定も可能です。DB固有の文字列・引用識別子・通常コメントは保護しますが、Domaの指示や式を置き換えて評価を省略することはありません。SELECTのみのチェックと、JDBC向けのCTE区切りはテンプレート評価とは別に残します。
 
-SQL Serverで先頭が`WITH`のCTEを使う場合も、SQLファイルを編集する必要はありません。Microsoft JDBCのメタデータ取得処理はSQLの前に`SET FMTONLY ON`を付けるため、プラグインはJDBCへ渡すSQLにだけ文の区切り`;`を補います。Metadata SQL欄の先頭へ手動追加する必要もなく、既にある`;WITH`も受け付けます。**SQL syntax**は**Automatic (JDBC URL)**または**SQL Server**を選択してください。エラー319が残る場合は、**Error details...**からCTE構文と区切りに関する案内を確認できます。[Microsoft JDBCの実装](https://github.com/microsoft/mssql-jdbc/blob/v12.8.1/src/main/java/com/microsoft/sqlserver/jdbc/SQLServerPreparedStatement.java)を参照しています。
-
-`SELECT ... FOR UPDATE`・`NOWAIT`・`OF ...`・`SKIP LOCKED`などのロック句を含むSELECTも受け付けます。SQLは準備・メタデータ取得にのみ使い、実行しません。複数文や更新文を含むCTEは引き続き拒否します。
+SQL ServerのCTEでは、ドライバーが付ける`SET FMTONLY ON`を終える`;`をJDBC用SQLにだけ補います。既存の`;WITH`や末尾の重複した`;`・コメントも受け付け、元ファイルは変更しません。実際の別クエリや更新文は拒否します。ロック句付きSELECTも実行せず準備・列情報取得のみ行います。[Microsoft JDBCの実装](https://github.com/microsoft/mssql-jdbc/blob/v12.8.1/src/main/java/com/microsoft/sqlserver/jdbc/SQLServerPreparedStatement.java)を参照しています。
 
 SQLStateだけではOracleエラーの原因を特定できないことがあります。**Error details...**でORA番号・ベンダー番号・失敗した段階を確認してください。同じSQLがSQLクライアントで実行できる場合は、JDBCドライバーや接続セッションの現在のスキーマなどの違いを切り分けます。不具合報告にはコードと段階のみを使い、接続情報やパスワードを含めないでください。
 
@@ -235,11 +213,11 @@ Eclipse本体を取得せずにコアのテストだけ実行する場合:
 
 [doma-gen](https://github.com/domaframework/doma-gen)はアーカイブ済みで、後継の[doma-codegen-plugin](https://github.com/domaframework/doma-codegen-plugin)が案内されています。Doma 2向けは後継ツールの2系です。公式にもSQLの結果から生成する機能があり、このプラグインではEclipse上でのSQL選択・接続設定・プレビュー・ファイル生成を提供します。
 
-現在は**doma-gen 2.28.0の`EntityDescFactory`・`EntityPropertyDescFactory`・`Generator`を直接呼び出します**。privateフィールド、`@domaGenerated`管理タグ、型名の衝突対策にはEclipse向けの出力テンプレートとアダプターを使います。SQLテンプレートの解析・組み立ては**Doma Core 2.57.0の`SqlParser`・`NodePreparedSqlBuilder`**を使用します。
+現在は**doma-gen 2.28.0の`EntityDescFactory`・`EntityPropertyDescFactory`・`Generator`を直接呼び出します**。privateフィールド、`@domaGenerated`管理タグ、型名の衝突対策にはEclipse向けの出力テンプレートとアダプターを使います。SQLテンプレートの解析・評価・組み立て・バインドには**Doma Core 2.57.0の`SqlParser`・`ExpressionEvaluator`・`NodePreparedSqlBuilder`・`PreparedSqlParameterBinder`をそのまま使用します**。
 
 Eclipseの接続プロファイル、プレビュー、既存クラスへの差分更新はプラグインが担当します。公式ライブラリと依存ライブラリは更新サイトに同梱し、GradleやAntコマンドの別途インストールは不要です。Antタスクとしてdoma-gen全体を起動する方式ではありません。
 
-DAO呼び出しと完全に同じ実行ではありません。実行時引数の代わりにSQLのテスト値を使い、対応する検索条件本文を含めるためのアダプターを介します。公式doma-genの`ResultSetMetaReader`はSELECTを実行するため呼び出さず、列情報は引き続きJDBCの実行前メタデータで取得します。型マッピング・名前規則と手動コード保持の仕様も維持します。詳細と参照ソースは[英語README](README.md#relationship-to-the-official-generator)、再配布ライブラリは[THIRD_PARTY_NOTICES](plugin/THIRD_PARTY_NOTICES)に記載しています。
+Argumentsとコンパイル済みプロジェクトクラスをDoma標準の評価器へ渡します。独自の分岐選択・サンプルループはありません。アプリケーションやDIコンテナーの起動は行いません。公式doma-genの`ResultSetMetaReader`はSELECTを実行するため呼び出さず、列情報は引き続きJDBCの実行前メタデータで取得します。型マッピング・名前規則と手動コード保持の仕様も維持します。詳細と参照ソースは[英語README](README.md#relationship-to-the-official-generator)、再配布ライブラリは[THIRD_PARTY_NOTICES](plugin/THIRD_PARTY_NOTICES)に記載しています。
 
 ## オープンソースとしての公開
 

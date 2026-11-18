@@ -35,12 +35,14 @@ class GeneratorTest {
 
     @Test void joinMetadataUsesResultAliasesAndTypes() throws Exception {
         try (Connection connection = database()) {
-            var columns = new JdbcMetadataReader().read(connection, """
+            var columns = new JdbcMetadataReader().read(connection, SqlInput.prepare("""
                     select e.id as employee_id, e.name as employee_name, d.name as department_name,
                            e.salary, e.hired_on, count(*) over() as total_count
                     from employee e left join department d on d.id = e.department_id
                     where e.id = /* employeeId */11;
-                    """);
+                    """, SqlInput.Dialect.STANDARD,
+                    java.util.Map.of("employeeId", new org.seasar.doma.internal.expr.Value(Long.class, 11L)), getClass().getClassLoader(), ""),
+                    "", TypeNameMappings.empty(), stage -> {}, new PreviewExecution.Cancellation());
             assertEquals(List.of(
                     new ResultColumn("EMPLOYEE_ID", "java.lang.Long"),
                     new ResultColumn("EMPLOYEE_NAME", "java.lang.String"),
@@ -283,8 +285,8 @@ class GeneratorTest {
 
     @ParameterizedTest
     @ValueSource(strings = { "delete from employee", "select 1; delete from employee", "select ?",
-            "select /*%expand alias*/* from employee", "select 1 /*%if enabled*/ where id = 1 /*%end*/",
-            "select /*# order */1", "select 'unclosed", "select /* broken",
+            "select 1 /*%if enabled*/ where id = 1 /*%end*/",
+            "select 'unclosed", "select /* broken",
             "with x as (delete from employee returning *) select * from x", "select id into example from employee", "" })
     void rejectsUnresolvedOrNonSelectStatements(String sql) {
         assertThrows(IllegalArgumentException.class, () -> SqlInput.validate(sql));

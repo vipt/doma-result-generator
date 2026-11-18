@@ -19,7 +19,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class SqlServerCteMetadataTest {
     private static final String CTE = "WITH sample AS (SELECT CAST(1 AS BIGINT) AS id) SELECT id FROM sample";
 
-    @ParameterizedTest @ValueSource(strings = { "", " \n", "-- header\n", "/* SELECT inside a header */\n", "/* outer /* nested */ comment */\n" })
+    @ParameterizedTest @ValueSource(strings = { "", " \n", "-- header\n", "/** SELECT inside a header */\n", "/** outer /* nested */ comment */\n" })
     void terminatesTheDriverMetadataPreambleBeforeCtesIncludingCommentedHeaders(String header) {
         String source = header + CTE;
         assertEquals(source, SqlInput.validate(source, SqlInput.Dialect.SQLSERVER));
@@ -30,7 +30,7 @@ class SqlServerCteMetadataTest {
         assertEquals(metadata, SqlInput.forMetadata(metadata, SqlInput.Dialect.SQLSERVER));
     }
 
-    @ParameterizedTest @ValueSource(strings = { ";", ";;", " ; -- header\n", "/* header */ ; /* after separator */\n" })
+    @ParameterizedTest @ValueSource(strings = { ";", ";;", " ; -- header\n", "/** header */ ; /** after separator */\n" })
     void acceptsExistingCteSeparatorsWithoutAddingAnother(String prefix) {
         String source = prefix + CTE;
         assertEquals(source, SqlInput.validate(source, SqlInput.Dialect.SQLSERVER));
@@ -59,7 +59,7 @@ class SqlServerCteMetadataTest {
 
     @ParameterizedTest @ValueSource(strings = {
             ";SELECT 1",
-            "; /* header */ DELETE FROM example",
+            "; /** header */ DELETE FROM example",
             ";WITH sample AS (SELECT 1 AS id) DELETE FROM sample",
             ";WITH sample AS (UPDATE example SET id=1) SELECT id FROM sample",
             ";WITH sample AS (SELECT 1 AS id); SELECT id FROM sample",
@@ -73,7 +73,7 @@ class SqlServerCteMetadataTest {
     }
 
     @Test void retainsConditionalFiltersAndTheVisibleSqlWhileNormalizingOnlyJdbcSyntax() {
-        String source = "with sample as (select 1 as id) select id from sample where 1=1 /*%if active*/ and id>0 /*%end*/; -- end";
+        String source = "with sample as (select 1 as id) select id from sample where 1=1 /*%if true*/ and id>0 /*%end*/; -- end";
         String visible = source.replace("; -- end", " -- end");
         assertEquals(visible, SqlInput.validate(source, SqlInput.Dialect.SQLSERVER));
         String metadata = SqlInput.forMetadata(source, SqlInput.Dialect.SQLSERVER);
@@ -86,7 +86,7 @@ class SqlServerCteMetadataTest {
         try (var real = DriverManager.getConnection("jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=MSSQLServer")) {
             String source = """
                     WITH prices AS (SELECT CAST(1 AS BIGINT) AS id, CAST(12.50 AS DECIMAL(10,2)) AS amount),
-                         filtered AS (SELECT id, amount FROM prices WHERE 1=1 /*%if active*/ AND id>0 /*%end*/)
+                         filtered AS (SELECT id, amount FROM prices WHERE 1=1 /*%if true*/ AND id>0 /*%end*/)
                     SELECT id AS item_id, amount FROM filtered
                     """;
             AtomicReference<String> preparedSql = new AtomicReference<>();

@@ -5,6 +5,11 @@ metadata to artifacts that do not already contain it; original library classes
 and resources are retained. This does not make the plug-in an official Doma,
 Eclipse, Apache or MojoHaus product.
 
+* Gson 2.13.2 (com.google.code.gson:gson)
+  Copyright Google Inc.
+  https://github.com/google/gson
+  Apache License 2.0 (see LICENSE in this plug-in)
+
 * Doma-Gen 2.28.0 (org.seasar.doma:doma-gen)
   Copyright 2019 domaframework.org
   https://github.com/domaframework/doma-gen

@@ -8,10 +8,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.seasar.doma.internal.expr.Value;
+import org.seasar.doma.internal.expr.util.ExpressionUtil;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Prepares metadata SELECT variants without evaluating application expressions. */
+/** Validates SELECT input and protects database quoting while Doma evaluates the template. */
 public final class SqlInput {
     public enum Dialect {
         STANDARD(false, false, false), POSTGRESQL(true, false, true), MYSQL(false, true, false),
@@ -33,9 +35,6 @@ public final class SqlInput {
     private static final Set<String> WRITES = Set.of("INSERT", "UPDATE", "DELETE", "MERGE", "CREATE",
             "ALTER", "DROP", "TRUNCATE", "CALL", "EXEC", "EXECUTE", "INTO", "GRANT", "REVOKE");
     private static final Pattern DOLLAR = Pattern.compile("\\$(?:[a-zA-Z_][a-zA-Z_0-9]*)?\\$");
-    private static final Pattern STRING_LITERAL = Pattern.compile("\"(?:[^\"\\\\\\r\\n]|\\\\[btnfr\"'\\\\])*\"");
-    private static final String IDENTIFIER = "(?:[\\p{L}_][\\p{L}\\p{N}_$#]*|\"(?:[^\"]|\"\")+\"|`(?:[^`]|``)+`|\\[(?:[^\\]]|\\]\\])+\\])";
-    private static final Pattern QUALIFIER = Pattern.compile(IDENTIFIER + "(?:\\." + IDENTIFIER + ")*");
     private record Replacement(int start, int end, String text) {}
     private record Validated(String sql, String maskedSql, Map<String, String> originals, boolean startsWithCte) {}
 
@@ -45,7 +44,7 @@ public final class SqlInput {
         final Map<String, String> originals = new LinkedHashMap<>();
         private final String prefix;
         Masks(String sql) {
-            String candidate = "__doma_result_opaque_";
+            String candidate = "__doma_result_" + java.util.UUID.randomUUID().toString().replace("-", "") + "_";
             while (sql.contains(candidate)) candidate += "_";
             prefix = candidate;
         }
@@ -66,25 +65,28 @@ public final class SqlInput {
 
     public static String validate(String sql, Dialect dialect) {
         Validated validated = inspect(sql, dialect);
-        DomaTestSqlBuilder.validate(validated.maskedSql());
+        DomaSql.parse(validated.maskedSql());
         return validated.sql();
     }
 
-    /** SQL Server's JDBC getMetaData prepends SET FMTONLY ON without a terminator. */
-    static String forMetadata(String sql, Dialect dialect) {
-        return metadataVariants(sql, dialect).get(0);
-    }
-
-    static List<String> metadataVariants(String sql, Dialect dialect) {
+    public static DomaPreparedSelect prepare(String sql, Dialect dialect, Map<String, Value> arguments,
+            ClassLoader loader, String jdbcUrl) {
         Validated validated = inspect(sql, dialect);
-        return DomaTestSqlBuilder.prepareVariants(validated.maskedSql(), validated.originals()).stream()
-                .map(prepared -> {
-                    Validated assembled = inspect(prepared, dialect); // Check embedded constants as part of the final SELECT.
-                    return dialect == Dialect.SQLSERVER && assembled.startsWithCte() ? ";" + prepared : prepared;
-                }).toList();
+        return DomaSql.prepare(validated.maskedSql(), validated.originals(), arguments, loader, dialect, jdbcUrl);
     }
 
-    private static Validated inspect(String sql, Dialect dialect) {
+    static String forMetadata(String sql, Dialect dialect) {
+        return prepare(sql, dialect, Map.of(), SqlInput.class.getClassLoader(), "").sql();
+    }
+
+    static String jdbcSql(String sql, Dialect dialect) {
+        Validated validated = inspect(sql, dialect, true);
+        return dialect == Dialect.SQLSERVER && validated.startsWithCte() ? ";" + validated.sql() : validated.sql();
+    }
+
+    private static Validated inspect(String sql, Dialect dialect) { return inspect(sql, dialect, false); }
+
+    private static Validated inspect(String sql, Dialect dialect, boolean boundSql) {
         if (sql == null || sql.isBlank()) throw new GenerationException("Enter a SELECT statement.");
         List<String> words = new ArrayList<>();
         List<Replacement> replacements = new ArrayList<>();
@@ -110,22 +112,18 @@ public final class SqlInput {
                 }
                 if (depth > 0) throw new GenerationException("Unclosed SQL comment.");
                 String comment = sql.substring(start + 2, i - 2).strip();
-                if (comment.equals("%expand") || comment.startsWith("%expand")
-                        && comment.length() > 7 && Character.isWhitespace(comment.charAt(7))) {
+                char marker = start + 2 < sql.length() ? sql.charAt(start + 2) : '*';
+                if (comment.startsWith("%") || comment.startsWith("#") || comment.startsWith("^")
+                        || ExpressionUtil.isExpressionIdentifierStart(marker)) {
                     if (terminal >= 0) throw new GenerationException("Only one SELECT statement is allowed.");
-                    int star = i;
-                    while (star < sql.length() && Character.isWhitespace(sql.charAt(star))) star++;
-                    if (star >= sql.length() || sql.charAt(star) != '*') {
-                        throw new GenerationException("A Doma %expand directive must be followed by *. Check Metadata SQL.");
-                    }
-                    replacements.add(new Replacement(start, star + 1, expansion(comment.substring(7).strip())));
-                    started = true;
-                    i = star + 1;
-                } else if (comment.startsWith("%") || comment.startsWith("#")) {
-                    if (terminal >= 0) throw new GenerationException("Only one SELECT statement is allowed.");
-                    // Doma's parser owns directive syntax and nesting; do not impose a second grammar here.
+                    // All Doma expressions are left to the unmodified official parser and builder.
                 } else masks.token(sql, start, i, false, true);
                 continue;
+            }
+            if (terminal >= 0 && c == ';') {
+                replacements.add(new Replacement(i, i + 1, ""));
+                i++;
+                continue; // Redundant trailing empty statements do not add another query.
             }
             if (terminal >= 0) throw new GenerationException("Only one SELECT statement is allowed.");
             if (c == ';' && dialect == Dialect.SQLSERVER && !started) {
@@ -136,7 +134,7 @@ public final class SqlInput {
             }
             started = true;
             if (c == ';') { terminal = i++; continue; }
-            if (c == '?') throw new GenerationException("Replace JDBC parameters (?) with typed test literals.");
+            if (c == '?' && !boundSql) throw new GenerationException("Use Doma bind comments with typed values from Arguments instead of JDBC parameters (?).");
             if (c == '\'' || c == '"' || c == '`' || c == '[') {
                 int quotedStart = i;
                 char close = c == '[' ? ']' : c;
@@ -203,17 +201,4 @@ public final class SqlInput {
         return prepared.toString();
     }
 
-    private static String expansion(String argument) {
-        if (argument.isEmpty()) return "*";
-        if (!STRING_LITERAL.matcher(argument).matches()) {
-            throw new GenerationException("The %expand alias must be a quoted string literal, for example /*%expand \"e\" */*. "
-                    + "Replace alias expressions with a concrete SELECT in Metadata SQL.");
-        }
-        String alias = argument.substring(1, argument.length() - 1).translateEscapes();
-        if (alias.isEmpty()) return "*";
-        if (alias.chars().anyMatch(Character::isISOControl) || !QUALIFIER.matcher(alias).matches()) {
-            throw new GenerationException("The %expand alias must be a table identifier or quoted table identifier. Check Metadata SQL.");
-        }
-        return alias + ".*";
-    }
 }

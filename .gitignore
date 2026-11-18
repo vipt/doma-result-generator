@@ -7,3 +7,5 @@ dist/
 .maven-cache/
 _site/
 /doma-tools/
+
+/local-reports/

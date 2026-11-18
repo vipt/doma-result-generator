@@ -45,10 +45,10 @@
         <li>接続プロファイルをワークスペース内で共有し、別プロジェクトでも選択して利用。前回の選択とPackageはプロジェクトごとに保持。パスワードの暗号化保存は任意。</li>
         <li><code>name.properties</code>の正規表現で、名前に一致するプロパティのJava型を指定。</li>
         <li><strong>Metadata SQL → SQL syntax</strong>でコメント・文字列のDB別の規則を選択。JDBC URLによる自動判別、<code>FOR UPDATE</code>付きSELECTにも対応。</li>
-        <li>WHERE／HAVING内の入れ子の<code>/*%if ...*/</code>・<code>/*%end*/</code>はSQLを書き換えずに利用。すべての検索条件本文とテスト値を使い、列情報を取得します。</li>
-        <li><code>%if/%elseif/%else</code>の構文はDoma本体で解析し、独自の対応句チェックは行いません。分岐ごとの列名・順序・JDBC型が一致すれば生成します。同じ条件はUNION内でも同じ分岐を選び、独立した条件は最大64通りまで確認します。</li>
-        <li><code>%for</code>にサンプル要素を渡し、<code>item_has_next</code>・<code>item_index</code>もDoma本体で処理。<code>/*# "OR" */</code>などの固定SQLと、バインド・リテラルのテスト値を利用できます。</li>
-        <li><strong>Doma本体のSQLパーサー・ビルダー</strong>でSQLを組み立て、サブクエリ内も含めて<code>WHERE AND</code>などを正規化。実行時引数の代わりにテスト値を使います。</li>
+        <li><strong>Arguments</strong>に型付きJSONを指定し、Doma標準の式評価・SQLビルダー・バインダーをそのまま使用します。</li>
+        <li>独自の分岐選択・ループのサンプル展開を廃止。<code>%if/%elseif/%else</code>・<code>%for</code>・埋め込みSQLは、指定した実引数に従って処理します。</li>
+        <li>コンパイル済みのプロジェクトクラス・enum・メソッドを参照でき、<strong>Evaluated SQL</strong>で組み立て結果を確認できます。バインド値は<code>?</code>で伏せます。</li>
+        <li>Doma本体でサブクエリ内の<code>WHERE AND</code>なども正規化。バインドはSQLのテスト値ではなくArgumentsの値を使います。</li>
         <li>SQL Serverの<code>WITH</code>で始まるCTEも、そのまま利用。JDBCのメタデータ取得時に必要な文の区切りを内部で補います（エラー319への対応）。</li>
         <li>既存クラスは <strong>Preview → 差分比較 → Update</strong>で更新。手動メソッドやコメントを保持し、衝突がある場合は更新を停止。</li>
         <li>接続待ちでも進捗ダイアログの<strong>Cancel</strong>でPreviewの待機を中止。<strong>Preview timeout (seconds)</strong>で待ち時間の上限を設定（初期値30秒）。遅れて返った結果は適用しません。</li>
@@ -78,7 +78,7 @@
 
       <h3>対応環境と現在の範囲</h3>
       <p><strong>Eclipse 2023-12 / 4.30以降、Java 17以上</strong>を対象にしています。Java開発機能（JDT）、対象プロジェクトのDoma 2設定、JDBCドライバーを用意してください。</p>
-      <p class="note">初期プレビュー版です。H2とDoma 2.57.0で生成・更新処理をテストしています。他DBはJDBCドライバーの実行前メタデータ取得に依存します。アプリケーションのJavaコードは評価せず、生成用アダプターが選ぶ分岐・サンプル要素・テスト値で列情報を取得します。列情報が異なる場合、64通りの組み合わせやSELECTごとに256サンプル要素を超える場合、実行時のSQL断片には<strong>Metadata SQL</strong>で具体的なSELECTを指定します。構文・ループ制御変数・埋め込み定数はDoma本体で処理し、単純な<code>/*%expand*/</code>は自動変換します。DBエラーは<strong>Error details...</strong>でORA番号・失敗段階を確認できます。旧版クラスの生成元が不明なフィールドは削除せず残します。比較画面の手動操作と、各DBでの検証は今後の確認項目です。</p>
+      <p class="note">初期プレビュー版です。H2とDoma 2.57.0でテストしています。他DBの列情報取得はJDBCドライバーに依存します。<strong>Argumentsの入力が必要です。</strong> テスト値の推測や未選択分岐の自動比較は行いません。Previewでアプリケーションのコンストラクター・getter・指定メソッドが実行される場合があります。先にプロジェクトをビルドしてください。引数は保存・ログ出力しません。SELECTの実行・結果取得APIは呼び出しません。手動比較画面と各DB実機での検証は今後の確認項目です。</p>
       <p class="links"><a href="https://github.com/vipt/doma-result-generator/blob/main/README.ja.md">詳しい使い方</a><a href="https://github.com/vipt/doma-result-generator">ソースコード</a><a href="https://github.com/vipt/doma-result-generator/issues">不具合・要望</a></p>
     </section>
 
@@ -99,10 +99,10 @@
         <li>Generate private fields and public getters/setters through <strong>doma-gen's generation APIs</strong>, using imports and short annotation/property type names.</li>
         <li>Override property types with ordered, regex-based <code>name.properties</code> rules.</li>
         <li>Choose dialect-aware comment/string rules under <strong>Metadata SQL → SQL syntax</strong>, with automatic JDBC URL selection and support for locking SELECTs.</li>
-        <li>Use nested <code>/*%if ...*/</code>/<code>/*%end*/</code> filters in WHERE/HAVING without editing SQL. Column metadata uses all filter bodies and test literals.</li>
-        <li>Parse <code>%if/%elseif/%else</code> using Doma itself, without a separate plug-in clause validator. Generate when every branch returns the same column names, order and JDBC types. Repeated conditions stay consistent across UNION branches; independent choices are checked in up to 64 combinations.</li>
-        <li>Supply sample elements to Doma's <code>%for</code> implementation, including <code>item_has_next</code>/<code>item_index</code>. Use embedded constants such as <code>/*# "OR" */</code> and bind/literal test values.</li>
-        <li>Assemble SQL with <strong>Doma's own parser and builder</strong>, normalizing leading operators such as <code>WHERE AND</code>, including in subqueries. Test literals replace DAO runtime arguments.</li>
+        <li>Supply typed JSON in <strong>Arguments</strong>. Use Doma’s unmodified expression evaluator, SQL builder and parameter binder.</li>
+        <li>No custom branch selection or sample loops. Doma processes <code>%if/%elseif/%else</code>, <code>%for</code> and embedded SQL with your exact arguments.</li>
+        <li>Reference compiled project classes, enums and methods. Review <strong>Evaluated SQL</strong>, with bind values omitted as <code>?</code>.</li>
+        <li>Assemble SQL with <strong>Doma's own parser and builder</strong>, normalizing leading operators such as <code>WHERE AND</code>, including in subqueries. Values from Arguments are bound; SQL test literals are ignored.</li>
         <li>Use SQL Server CTEs starting with <code>WITH</code> unchanged. The required statement separator is supplied internally for JDBC metadata lookup (error 319).</li>
         <li>Review existing-class changes before <strong>Update</strong>, retaining handwritten methods and comments. Conflicts stop the update.</li>
         <li>Share named connection profiles across projects in one workspace. Remember each project's last profile and Package, with optional encrypted password storage in Eclipse Secure Storage.</li>
@@ -126,7 +126,7 @@
       </ol>
       <p class="note"><strong>UI Prompt still uses encrypted Eclipse Secure Storage.</strong> Only the way Eclipse obtains the master password changes. The setting affects newly saved information throughout Eclipse; existing entries are not migrated automatically. See the official <a href="https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-prefs.htm">preferences guide</a> and <a href="https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-works.htm">how Secure Storage works</a>.</p>
       <p>Requires Eclipse Java IDE <strong>2023-12 / 4.30+</strong>, <strong>Java 17+</strong>, a Doma 2 project and a JDBC driver.</p>
-      <p class="note">Initial preview. Core generation and update tests use H2 and Doma 2.57.0. Other databases depend on pre-execution JDBC metadata support. A generation adapter selects branches, sample elements and test literals without evaluating application code. Differing column metadata, more than 64 combinations or 256 sample elements per assembled SELECT, and runtime SQL fragments need a concrete SELECT in Metadata SQL. Doma handles syntax, loop flags and embedded constants; simple <code>/*%expand*/</code> is prepared automatically. <strong>Error details...</strong> reports Oracle numbers and failure stages. Uncertain unmarked legacy fields are retained. Manual comparison-dialog checks and database-specific validation remain open.</p>
+      <p class="note">Initial preview. Tests use H2 and Doma 2.57.0; other databases depend on JDBC metadata support. <strong>Arguments must be provided.</strong> No values are guessed and unselected branches are not compared. Preview can run constructors, getters and application methods from compiled project classes: build the project first. Argument values are not saved or logged. SELECT execution/fetch APIs are not called. Manual comparison-dialog and database-specific validation remain open.</p>
       <p class="links"><a href="https://github.com/vipt/doma-result-generator/blob/main/README.md">Documentation</a><a href="https://github.com/vipt/doma-result-generator">Source</a><a href="https://github.com/vipt/doma-result-generator/issues">Issues</a></p>
     </section>
   </main>

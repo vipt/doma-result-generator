@@ -12,7 +12,7 @@ An independent Eclipse plug-in that generates a Doma 2 entity from the columns r
 2. Right-click the SQL file in Package Explorer or Project Explorer, or inside its open SQL editor, and select **Generate Doma Result Class...**.
 3. Select a saved **Connection profile**, or select your JDBC driver JAR(s) and enter the driver class, URL and credentials. Drivers are supplied separately, so vendor libraries are not redistributed.
 4. Select a Java source folder, package and class name. Optionally select a UTF-8 type mapping file; `name.properties` in the project root is initially selected when present.
-5. Review the **Metadata SQL** tab. It starts with the saved SQL file. Changes made here are used for metadata lookup and do not change the SQL file.
+5. Review **Metadata SQL** and enter typed values in **Arguments** for any template parameters. Changes do not modify the SQL file.
 6. Select **Preview** and review **Proposed Java**. For a new class, select **Generate**. For an existing class, review the comparison and select **Update**.
 
 The plug-in uses `Connection.prepareStatement(...).getMetaData()`. It does not call `execute`, `executeQuery` or fetch result rows. Some drivers may communicate with the database while preparing/describing a statement. No automatic execution fallback is performed when metadata is unavailable.
@@ -125,88 +125,64 @@ Save existing edits before previewing. At Update, the saved source and modificat
 
 For a class with the original `Generated from SELECT result metadata.` header and no ownership tags, the first update can adopt matching simple `@Column(name = ...)` fields and ordinary accessors. Their user comments and custom methods are retained, and ownership tags are added to adopted members. Unmarked old fields absent from the current SQL remain in place, with a preview note, because their ownership cannot be established. Review those fields manually. Arbitrary unmarked field collisions are not overwritten. Immutable entities and unsupported/custom declarations require manual adjustment.
 
-## SQL templates
+## SQL templates and Arguments
 
-Simple Doma bind comments with executable test literals, such as `/* employeeId */11`, can remain. JDBC parameter placeholders (`?`) must be replaced with typed sample literals.
+The plug-in directly instantiates Doma Core 2.57.0's **`SqlParser`, `ExpressionEvaluator` and `NodePreparedSqlBuilder`** and uses its **`PreparedSqlParameterBinder`**. There are no custom IF/FOR visitors, guessed branches, synthetic collections or constant-only expression restrictions. Doma evaluates one SQL result for the exact arguments you supply, including `%if/%elseif/%else`, `%for`, loop flags/index, bind variables, literal variables, embedded SQL, built-in functions and application methods.
 
-Simple expansion directives are prepared automatically for metadata lookup:
+### Entering arguments
 
-```sql
--- No table alias
-select /*%expand*/* from employee
--- Metadata SQL: select * from employee
+In **Arguments**, enter typed JSON or select **Load JSON...**:
 
--- Literal table alias
-select /*%expand "e" */* from employee e
--- Metadata SQL: select e.* from employee e
+```json
+{
+  "ids": {"type": "java.util.List<java.lang.String>", "value": ["A", "B"]},
+  "enabled": {"type": "boolean", "value": true},
+  "orderBy": {"type": "java.lang.String", "value": "ORDER BY name"},
+  "minimum": {"type": "java.lang.Long", "value": null}
+}
 ```
 
-On **Preview**, **Metadata SQL** displays the prepared SELECT. The saved SQL file remains unchanged. Bind comments and test values, including `IN /* ids */(0)`, can remain. A literal alias can use a quoted SQL identifier; arbitrary alias expressions are not evaluated. The database describes `*` or `alias.*`, so metadata generation includes that table's database columns rather than deriving a projection from an existing Doma entity definition.
+Every argument has a Java `type` and JSON `value`. Use fully qualified class names (java.lang short names also work), concrete generic types for collections, and typed nulls for nullable values. Primitive types cannot contain null. Arrays, BigDecimal/BigInteger, ISO LocalDate/LocalTime/LocalDateTime and java.sql date/time values are supported. Missing required arguments produce a Doma error; values are never filled from SQL test literals or inferred defaults. An argument unused by the selected branch need not be supplied.
 
-### Doma conditions
+For a condition bean, specify its compiled class and JSON fields:
 
-Nested `/*%if condition */ ... /*%end*/` filters inside an existing WHERE or HAVING clause can remain unchanged. No edits to the SQL file or Metadata SQL are needed.
-
-```sql
-SELECT e.id, e.name
-FROM employee e
-WHERE 1=1
-/*%if @isNotBlank(condition.name) */
-  AND e.name = /* condition.name */'sample'
-/*%end*/
-/*%if condition.first || condition.second */
-  AND e.status IN (''
-    /*%if condition.first */ ,'A' /*%end*/
-    /*%if condition.second */ ,'B' /*%end*/
-  )
-/*%end*/
+```json
+{
+  "condition": {
+    "type": "example.SearchCondition",
+    "value": {"name": "sample", "enabled": true}
+  }
+}
 ```
 
-Template syntax and nesting are parsed by Doma's own `SqlParser`, condition-expression syntax by its `ExpressionParser`, and SQL assembly by its `NodePreparedSqlBuilder`. There is no separate plug-in condition grammar or clause-scope validator. Leading logical operators such as `WHERE AND ...` and `HAVING OR ...`, including inside subqueries, are removed by the official builder. No source or Metadata SQL edits are needed.
+**Use compiled project classes and dependencies for expressions** loads the project's runtime classpath, including referenced project outputs. Build the project first, and run Eclipse on a Java version capable of loading those classes. Add external JARs/folders under **Additional expression JARs/folders**, separated by semicolons. Bean values are constructed using Gson; Doma then reads properties, fields, enums and methods with its standard evaluator. Preview can execute constructors, getters, static initializers and other methods in these classes. The plug-in supplies built-in dialect functions selected from the JDBC URL; it does not start the application or its DI container or automatically reproduce a custom DAO Config.
 
-Since no DAO invocation arguments are supplied, an adapter includes simple filter bodies and test literals without evaluating application conditions or Java code. Constants and Doma's loop flags can be evaluated by Doma itself as described below. Opaque strings, quoted identifiers and bind comments are protected and restored. The visible template retains its condition comments; JDBC receives the official builder's assembled SQL. No result rows are fetched. Filters inside subqueries, CTEs and UNION branches are supported.
+Arguments and expression-classpath edits are kept only while the dialog is open. They are not saved in connection profiles, preferences, project files or logs. Importing JSON is explicit and never modifies its file. Doma errors show codes, a missing argument name when available, and a prepared-SQL line number, without copying raw SQL, values or application exception messages. Application methods themselves retain their own logging/side effects.
 
-Conditional SELECT expressions with `%if`/`%elseif`/`%else` are also supported without rewriting the SQL. For example:
+### SQL evaluation and preview
 
-```sql
-SELECT e.id
-/*%if options.exactName */
-  , CASE WHEN e.exact_name IS NULL THEN e.name ELSE e.exact_name END AS full_name
-/*%else*/
-  , e.name AS full_name
-/*%end*/
-FROM employee e
-```
-
-Conditional choices are assembled separately by the official Doma builder, including SELECT expressions, FROM/JOIN and ORDER BY alternatives that its parser accepts. The generator compares each variant's column names, order and JDBC types before generating a class. All must agree; type-mapping overrides do not bypass this check. A projection `%if` without `%else` also checks the empty branch. Identical condition-expression chains are chosen consistently across repeated occurrences, including UNION branches. Independent chains are combined, up to **64 combinations**, and identical assembled SQL is described once. Simple filter-only `%if`/`%end` bodies remain included, so ordinary optional filters do not multiply the combinations; this optimization follows Doma's syntax tree rather than a second SQL parser. Each description uses `getMetaData()`, never SELECT execution, and shares the existing Preview cancellation and timeout.
-
-If branch metadata differs or the combination limit is exceeded, select the intended concrete SELECT in **Metadata SQL**. Malformed templates are rejected by Doma's parser with its diagnostic code and, when available, a prepared-SQL line number, without exposing raw SQL. The remaining plug-in adapter selects representative branches and loop samples, preserves test literals and prepares literal `%expand` for JDBC metadata; it does not evaluate DAO arguments or application code. SELECT-only checks remain separate from template syntax. This is a generation-time adapter, not an unchanged DAO execution path, and does not prove which expression combinations occur at runtime.
-
-### Loops and constant embedded SQL
-
-Filter loops can remain unchanged, including an embedded constant separator:
+For example, supply `ids` above to evaluate this template unchanged:
 
 ```sql
 SELECT e.id, e.name FROM employee e
 WHERE (
-  /*%for item : filter.ids */
-    e.id = /*item*/1
+  /*%for item : ids */
+    e.id = /*item*/'ignored'
     /*%if item_has_next */ /*# "OR" */ /*%end*/
   /*%end*/
 )
+/*# orderBy */
 ```
 
-The adapter supplies a two-element sample collection to Doma's own loop builder for a simple filter loop. Doma sets/evaluates `item_has_next` and `item_index`, so separators are emitted between items and never after the last item. Bind values are taken from the SQL test literals, not from the synthetic elements. Index comparisons, negation, alternative separator branches, nested loops and shadowed loop identifiers follow the same official loop/condition implementation. Sample collections are supplied without invoking the application's collection expression. Conditions evaluated within a loop must use only its flags/index and constants; application-dependent conditions continue to use the generation adapter's representative branches.
+Doma uses exactly the provided collection and evaluates `item_has_next`/`item_index` itself. Bind comments become `?`, and the actual typed values are bound using Doma's standard binder before JDBC metadata lookup. SQL test literals such as `'ignored'` are ignored by Doma. `%else` and optional projection columns follow the provided arguments; there is no automatic comparison of unselected branches. Generate separate result classes or choose consistent arguments when a template can return different column sets. The old 64-combination/256-sample limits and sample-expansion behavior have been removed; the overall Preview timeout and cancellation remain.
 
-Constant embedded expressions such as `/*# "OR" */` or `/*# "O" + "R" */` use Doma's expression evaluator and embedded-SQL checks. Application variables, fields, methods, functions and constructors are never evaluated for embedded SQL; runtime fragments such as `/*# orderBy */` need a concrete value in Metadata SQL. Literal variables with test values, such as `/*^ item */1`, retain those test values just like bind comments. The assembled SQL is checked again for a single SELECT before it reaches JDBC.
+**Evaluated SQL** shows the actual prepared SELECT, with bind values omitted as `?`. It remains available if database connection/metadata fails after evaluation. **Metadata SQL** retains the source template; the saved SQL file is never changed. The generator does not call SELECT execution/fetch APIs, and metadata describes only the selected result shape.
 
-Loops outside simple filters are described with one and two sample elements, and the same column-metadata comparison applies; variable projection sizes cannot produce a single stable result class. Filter loops do not multiply variant combinations. In addition to the 64-combination limit, expansion is bounded to **256 sample elements per assembled SELECT**, including nested loops. These are representative metadata samples, not the caller's actual values or a proof for arbitrary collection sizes. All metadata descriptions remain cancellable and use the Preview timeout without calling SELECT execution APIs.
+Doma processes `%expand` and evaluates its alias expression. Because the result entity does not exist yet, the plug-in supplies `*` to Doma's column-expansion callback; the resulting `*` or `alias.*` is described by the database rather than taken from an existing entity definition. Doma's original syntax rules apply, including placing `*` directly after the expansion directive. Use Doma ordinary comments (`/** ... */` or `-- ...`) for explanatory comments; `/* name */` denotes a Doma bind expression and requires a following test literal.
 
-**Metadata SQL → SQL syntax** defaults to automatic selection from the JDBC URL: PostgreSQL, MySQL/MariaDB, SQL Server, or generic non-nested comments for Oracle and other URLs. PostgreSQL/SQL Server support nested comments; MySQL supports backslash string escapes. Select the corresponding override for MySQL `NO_BACKSLASH_ESCAPES` or PostgreSQL legacy backslash strings. Automatic selection does not query the database's session mode.
+**Metadata SQL → SQL syntax** selects quoting/comment handling from the JDBC URL or a manual override for PostgreSQL, MySQL/MariaDB, SQL Server, Oracle/generic, and their supported string-escape modes. Strings, quoted identifiers and ordinary comments are protected while Doma processes its SQL structure; no Doma directive or expression is masked or replaced. SELECT-only validation and JDBC-specific CTE separators remain metadata integration tasks, not alternate template evaluation.
 
-SQL Server CTEs starting with `WITH` need no source edits. Microsoft's JDBC metadata implementation prefixes SQL with `SET FMTONLY ON`, so the generator supplies the required `;` separator only in the SQL passed to JDBC. The Metadata SQL field remains unchanged, and an existing `;WITH` prefix is accepted. Select **Automatic (JDBC URL)** or **SQL Server** under **SQL syntax**. If error 319 persists, **Error details...** includes CTE syntax/separator guidance. See the [Microsoft JDBC implementation](https://github.com/microsoft/mssql-jdbc/blob/v12.8.1/src/main/java/com/microsoft/sqlserver/jdbc/SQLServerPreparedStatement.java).
-
-Locking SELECTs with `FOR UPDATE`, `NOWAIT`, `OF ...` or `SKIP LOCKED` are accepted. The statement is only prepared/described, never executed; multiple statements and data-modifying CTEs remain rejected.
+SQL Server CTEs receive a leading `;` only in JDBC SQL to terminate the driver's `SET FMTONLY ON` preamble. Existing `;WITH`, redundant trailing semicolons and trailing comments are accepted; genuine second statements and data modification remain rejected. Source SQL is unchanged. Locking SELECTs are prepared/described without executing them. See the [Microsoft JDBC implementation](https://github.com/microsoft/mssql-jdbc/blob/v12.8.1/src/main/java/com/microsoft/sqlserver/jdbc/SQLServerPreparedStatement.java).
 
 ### JDBC errors
 
@@ -306,9 +282,9 @@ Tests cover join/aggregate metadata, empty results, no query execution, driver i
 
 [doma-gen](https://github.com/domaframework/doma-gen) is archived and directs users to [doma-codegen-plugin](https://github.com/domaframework/doma-codegen-plugin). Its compatibility matrix identifies CodeGen Plugin **2.x** as the Doma 2 line. The official tools already support generation from SQL results: see [ResultSetMetaReader](https://github.com/domaframework/doma-gen/blob/master/src/main/java/org/seasar/doma/extension/gen/ResultSetMetaReader.java) and the successor's [CodeGenDtoTask](https://github.com/domaframework/doma-codegen-plugin/blob/2.x/codegen/src/main/java/org/seasar/doma/gradle/codegen/task/CodeGenDtoTask.java).
 
-Generation now directly calls **doma-gen 2.28.0's `EntityDescFactory`, `EntityPropertyDescFactory` and `Generator`**. An Eclipse output template and adapters retain private fields, ownership tags, Java naming rules, type overrides and collision-aware imports. SQL parsing and assembly use **Doma Core 2.57.0's `SqlParser` and `NodePreparedSqlBuilder`**. These are actual runtime dependencies, shipped as OSGi bundles in the update site together with FreeMarker and their dependencies. A separate Gradle/Ant installation is not required; the plug-in does not launch the Ant task.
+Generation now directly calls **doma-gen 2.28.0's `EntityDescFactory`, `EntityPropertyDescFactory` and `Generator`**. An Eclipse output template and adapters retain private fields, ownership tags, Java naming rules, type overrides and collision-aware imports. SQL parsing, expression evaluation, assembly and binding use **Doma Core 2.57.0's unmodified `SqlParser`, `ExpressionEvaluator`, `NodePreparedSqlBuilder` and `PreparedSqlParameterBinder`**. These are actual runtime dependencies, shipped as OSGi bundles in the update site together with FreeMarker and their dependencies. A separate Gradle/Ant installation is not required; the plug-in does not launch the Ant task.
 
-Eclipse connection profiles, preview and existing-source merging remain the plug-in's responsibility. This is not a full DAO invocation: test values are used instead of runtime arguments, and an adapter includes supported filter bodies without evaluating application code. The official `ResultSetMetaReader` executes the SELECT, so column lookup continues to use JDBC prepared-statement metadata before execution. No execution fallback is performed. Existing type/naming compatibility is retained, including FLOAT → Double. See [THIRD_PARTY_NOTICES](plugin/THIRD_PARTY_NOTICES) for bundled dependency versions and licenses.
+Eclipse connection profiles, preview and existing-source merging remain the plug-in's responsibility. Typed Arguments and compiled project classes are passed to Doma's standard evaluator; no custom branch selection or sample-loop evaluator remains. This does not start the application or recreate its DI container. The official `ResultSetMetaReader` executes the SELECT, so column lookup continues to use JDBC prepared-statement metadata before execution. No execution fallback is performed. Existing type/naming compatibility is retained, including FLOAT → Double. See [THIRD_PARTY_NOTICES](plugin/THIRD_PARTY_NOTICES) for bundled dependency versions and licenses.
 
 ## Open-source publication
 

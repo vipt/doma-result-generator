@@ -11,6 +11,8 @@ import io.github.domaresult.core.PreviewExecution;
 import io.github.domaresult.core.SqlInput;
 import io.github.domaresult.core.SourceUpdatePlan;
 import io.github.domaresult.core.TypeNameMappings;
+import io.github.domaresult.core.TemplateArguments;
+import io.github.domaresult.eclipse.ExpressionClasspath;
 import io.github.domaresult.eclipse.WorkspaceClassUpdater;
 import java.io.File;
 import java.io.IOException;
@@ -82,14 +84,16 @@ final class GenerateDialog extends TitleAreaDialog {
     private Combo sqlSyntax;
     private static final SqlInput.Dialect[] SQL_DIALECTS = { null, SqlInput.Dialect.STANDARD, SqlInput.Dialect.POSTGRESQL,
             SqlInput.Dialect.MYSQL, SqlInput.Dialect.MYSQL_NO_BACKSLASH, SqlInput.Dialect.POSTGRESQL_LEGACY, SqlInput.Dialect.SQLSERVER };
-    private StyledText sql, preview;
+    private StyledText sql, preview, arguments, evaluatedSql;
+    private Text expressionClasspath;
+    private Button includeProjectClasses;
     private TabFolder tabs;
     private String generated;
     private String lastJdbcError;
     private ICompilationUnit previewTarget;
     private SourceUpdatePlan updatePlan;
     private final WorkspaceClassUpdater updater = new WorkspaceClassUpdater();
-    private record PreviewResult(String source, List<String> notes) {}
+    private record PreviewResult(String source, List<String> notes, String sql) {}
 
     GenerateDialog(Shell parent, IWorkbenchWindow window, IFile file,
             List<IPackageFragmentRoot> roots, String initialSql) {
@@ -106,7 +110,7 @@ final class GenerateDialog extends TitleAreaDialog {
     @Override
     protected Control createDialogArea(Composite parent) {
         setTitle("Generate Doma Result Class");
-        setMessage("Configure JDBC, check the metadata SQL, then preview the result class.");
+        setMessage("Configure JDBC, enter template arguments, then preview the result class.");
         Composite area = (Composite) super.createDialogArea(parent);
         tabs = new TabFolder(area, SWT.NONE);
         tabs.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
@@ -173,16 +177,44 @@ final class GenerateDialog extends TitleAreaDialog {
                 "MySQL: NO_BACKSLASH_ESCAPES", "PostgreSQL: legacy backslash strings", "SQL Server" });
         sqlSyntax.select(0);
         sqlSyntax.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-        note(sqlPage, "Doma parses template syntax and assembles SQL. Alternatives must return the same column names, order and JDBC types (up to 64 combinations). Loops use sample elements and Doma's has_next/index flags; embedded constants and bind/literal test values are supported. Runtime SQL fragments need concrete values. Application code is not evaluated. The original file is unchanged.");
+        note(sqlPage, "Doma evaluates this template with the values in Arguments. Supply every argument used by the selected branch, including bind values. SQL test literals are ignored by Doma. The original file is unchanged.");
         sql = new StyledText(sqlPage, SWT.BORDER | SWT.MULTI | SWT.H_SCROLL | SWT.V_SCROLL);
         sql.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
         sql.setText(initialSql);
+        Composite argumentsPage = page("Arguments", 1);
+        note(argumentsPage, "JSON format: {\"ids\": {\"type\": \"java.util.List<java.lang.String>\", \"value\": [\"A\", \"B\"]}, \"enabled\": {\"type\": \"boolean\", \"value\": true}}. Doma selects branches and loops using these exact values. Arguments are not saved.");
+        includeProjectClasses = new Button(argumentsPage, SWT.CHECK);
+        includeProjectClasses.setText("Use compiled project classes and dependencies for expressions");
+        includeProjectClasses.setSelection(true);
+        note(argumentsPage, "Preview evaluates expressions and may call methods in those classes. Build the project first. Custom argument objects use fully qualified Java types and JSON field values.");
+        new Label(argumentsPage, SWT.NONE).setText("Additional expression JARs/folders (semicolon separated)");
+        expressionClasspath = new Text(argumentsPage, SWT.BORDER);
+        expressionClasspath.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        Button loadArguments = new Button(argumentsPage, SWT.PUSH);
+        loadArguments.setText("Load JSON...");
+        loadArguments.addListener(SWT.Selection, e -> {
+            FileDialog dialog = new FileDialog(getShell(), SWT.OPEN);
+            dialog.setFilterExtensions(new String[] { "*.json", "*" });
+            String selected = dialog.open();
+            if (selected != null) try { arguments.setText(java.nio.file.Files.readString(Path.of(selected), java.nio.charset.StandardCharsets.UTF_8)); }
+            catch (IOException failure) { setErrorMessage("Cannot read Arguments JSON. Check the file's path and UTF-8 encoding."); }
+        });
+        arguments = new StyledText(argumentsPage, SWT.BORDER | SWT.MULTI | SWT.H_SCROLL | SWT.V_SCROLL);
+        arguments.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+        arguments.setText("{}\n");
+        Composite evaluatedPage = page("Evaluated SQL", 1);
+        note(evaluatedPage, "SQL produced by Doma for these Arguments. Bind values are represented by ? and are not displayed. Preview describes this SELECT without executing it.");
+        evaluatedSql = new StyledText(evaluatedPage, SWT.BORDER | SWT.MULTI | SWT.H_SCROLL | SWT.V_SCROLL | SWT.READ_ONLY);
+        evaluatedSql.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
         Composite previewPage = page("Proposed Java", 1);
         preview = new StyledText(previewPage, SWT.BORDER | SWT.MULTI | SWT.H_SCROLL | SWT.V_SCROLL | SWT.READ_ONLY);
         preview.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
         ModifyListener invalidate = e -> invalidatePreview();
         for (Text input : List.of(jars, driverClass, jdbcUrl, user, password, packageName, className, typeMappingsFile)) input.addModifyListener(invalidate);
         sql.addModifyListener(invalidate);
+        arguments.addModifyListener(invalidate);
+        expressionClasspath.addModifyListener(invalidate);
+        includeProjectClasses.addListener(SWT.Selection, e -> invalidatePreview());
         sourceFolder.addModifyListener(invalidate);
         previewTimeout.addModifyListener(invalidate);
         sqlSyntax.addModifyListener(invalidate);
@@ -391,6 +423,7 @@ final class GenerateDialog extends TitleAreaDialog {
             getButton(ERROR_DETAILS).setEnabled(false);
         }
         if (preview != null) preview.setText("");
+        if (evaluatedSql != null) evaluatedSql.setText("");
         setErrorMessage(null);
     }
 
@@ -415,6 +448,7 @@ final class GenerateDialog extends TitleAreaDialog {
         invalidatePreview();
         int timeoutSeconds = previewTimeout.getSelection();
         AtomicReference<JdbcErrorDetails.Stage> stage = new AtomicReference<>(JdbcErrorDetails.Stage.LOADING_DRIVER);
+        AtomicReference<String> preparedPreview = new AtomicReference<>();
         try {
             String pkg = packageName.getText().trim();
             String name = className.getText().trim();
@@ -436,6 +470,10 @@ final class GenerateDialog extends TitleAreaDialog {
             final SqlInput.Dialect selectedDialect = dialect;
             String query = SqlInput.validate(sql.getText(), selectedDialect);
             if (!query.equals(sql.getText())) sql.setText(query);
+            String argumentJson = arguments.getText();
+            String extraClasspath = expressionClasspath.getText();
+            boolean useProject = includeProjectClasses.getSelection();
+            var javaProject = target.getJavaProject();
             List<Path> paths = Arrays.stream(jars.getText().split(";"))
                     .filter(path -> !path.isBlank()).map(String::trim).map(Path::of).toList();
             String driver = driverClass.getText().trim();
@@ -458,8 +496,14 @@ final class GenerateDialog extends TitleAreaDialog {
                         } catch (IOException e) {
                             throw new GenerationException("Cannot read the type mappings file. Check its path, permissions and UTF-8 encoding.");
                         }
-                        String fresh;
-                        try (JdbcDriverLoader loader = new JdbcDriverLoader(paths)) {
+                        String fresh, preparedSql;
+                        stage.set(JdbcErrorDetails.Stage.EVALUATING_TEMPLATE);
+                        try (var expressionLoader = ExpressionClasspath.open(javaProject, useProject, extraClasspath);
+                                JdbcDriverLoader loader = new JdbcDriverLoader(paths)) {
+                            var values = TemplateArguments.parse(argumentJson, expressionLoader);
+                            var prepared = SqlInput.prepare(query, selectedDialect, values, expressionLoader, url);
+                            preparedSql = prepared.sql();
+                            preparedPreview.set(preparedSql);
                             cancellation.driverLoader(loader);
                             Thread thread = Thread.currentThread();
                             ClassLoader previous = thread.getContextClassLoader();
@@ -470,7 +514,7 @@ final class GenerateDialog extends TitleAreaDialog {
                                 var connection = loader.connect(driver, url, username, secret, timeoutSeconds);
                                 try (connection) {
                                     cancellation.track(connection);
-                                    var columns = new JdbcMetadataReader().read(connection, query, pkg + "." + name, mappings, stage::set, selectedDialect, cancellation);
+                                    var columns = new JdbcMetadataReader().read(connection, prepared, pkg + "." + name, mappings, stage::set, cancellation);
                                     cancellation.check();
                                     stage.set(JdbcErrorDetails.Stage.GENERATING_CLASS);
                                     fresh = classUpdater.generate(target, pkg, name, columns);
@@ -483,9 +527,9 @@ final class GenerateDialog extends TitleAreaDialog {
                         if (existing) {
                             var merged = classUpdater.preview(target, before, fresh, backgroundMonitor, stage::set);
                             cancellation.check();
-                            return new PreviewResult(merged.source(), merged.notes());
+                            return new PreviewResult(merged.source(), merged.notes(), preparedSql);
                         }
-                        return new PreviewResult(fresh, List.of());
+                        return new PreviewResult(fresh, List.of(), preparedSql);
                     }, monitor::isCanceled, Duration.ofSeconds(timeoutSeconds)));
                 } catch (ExecutionException e) {
                     throw new InvocationTargetException(e.getCause());
@@ -501,7 +545,8 @@ final class GenerateDialog extends TitleAreaDialog {
             previewTarget = target;
             updatePlan = existing ? new SourceUpdatePlan(before, generated, stamp) : null;
             preview.setText(generated);
-            tabs.setSelection(2);
+            evaluatedSql.setText(result.get().sql());
+            tabs.setSelection(4);
             getButton(IDialogConstants.OK_ID).setText(existing ? "Update" : "Generate");
             boolean changes = !existing || updatePlan.hasChanges();
             getButton(COMPARE).setEnabled(existing && changes);
@@ -536,6 +581,8 @@ final class GenerateDialog extends TitleAreaDialog {
             setErrorMessage(e.getMessage());
         } catch (CoreException e) {
             setErrorMessage("Cannot read the target Java class. Check its saved state, encoding and permissions.");
+        } finally {
+            if (preparedPreview.get() != null) evaluatedSql.setText(preparedPreview.get());
         }
     }
 

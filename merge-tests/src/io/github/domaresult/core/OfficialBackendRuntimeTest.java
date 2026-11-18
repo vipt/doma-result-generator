@@ -20,31 +20,40 @@ public class OfficialBackendRuntimeTest {
 
     @Test public void officialDomaSqlAssemblyWorksInsideThePluginClassLoader() {
         assertEquals("io.github.domaresult.org.seasar.doma.doma-core", FrameworkUtil.getBundle(SqlParser.class).getSymbolicName());
-        String sql = SqlInput.forMetadata("SELECT 1 AS id WHERE /*%if enabled*/ AND 1=1 /*%end*/", SqlInput.Dialect.SQLSERVER);
+        String sql = SqlInput.forMetadata("SELECT 1 AS id WHERE /*%if true*/ AND 1=1 /*%end*/", SqlInput.Dialect.SQLSERVER);
         assertFalse(sql.contains("/*%if"));
         assertFalse(sql.matches("(?s).*WHERE\\s+AND\\b.*"));
         assertTrue(sql.contains("1=1"));
     }
 
-    @Test public void projectionBranchesAreAssembledSeparatelyInsideThePluginClassLoader() {
-        String source = "SELECT /*%if option*/ CASE WHEN 1=1 THEN 'a' ELSE 'b' END /*%else*/ 'c' /*%end*/ AS name";
-        List<String> variants = SqlInput.metadataVariants(source, SqlInput.Dialect.SQLSERVER);
-        assertEquals(2, variants.size());
-        assertTrue(variants.get(0).contains("CASE WHEN"));
-        assertFalse(variants.get(1).contains("CASE WHEN"));
-        assertTrue(variants.get(1).contains("'c'"));
-        assertEquals(source, SqlInput.validate(source, SqlInput.Dialect.SQLSERVER));
+    @Test public void standardEvaluatorUsesTypedArgumentsInsideThePluginClassLoader() {
+        var values = TemplateArguments.parse("{\"enabled\":{\"type\":\"boolean\",\"value\":false}}", getClass().getClassLoader());
+        var prepared = SqlInput.prepare("SELECT /*%if enabled*/ 1 /*%else*/ 2 /*%end*/ AS id", SqlInput.Dialect.SQLSERVER,
+                values, getClass().getClassLoader(), "");
+        assertTrue(prepared.sql().contains("2"));
+        assertFalse(prepared.sql().contains("1"));
     }
 
-    @Test public void officialLoopEvaluationAndEmbeddedConstantsWorkInsideThePluginClassLoader() {
-        String source = "SELECT 1 AS id WHERE (/*%for item:items*/ 1=/*item*/1 "
-                + "/*%if item_has_next*/ /*# \"OR\" */ /*%end*/ /*%end*/)";
-        String sql = SqlInput.forMetadata(source, SqlInput.Dialect.SQLSERVER);
-        assertFalse(sql.contains("/*%"));
-        assertFalse(sql.contains("/*#"));
-        assertEquals(2, sql.split("1=/\\*item\\*/1", -1).length - 1);
-        assertEquals(1, java.util.regex.Pattern.compile("\\bOR\\b").matcher(sql).results().count());
-        assertEquals(source, SqlInput.validate(source, SqlInput.Dialect.SQLSERVER));
+    @Test public void expressionClasspathIncludesProjectOutputAndAdditionalFolders() throws Exception {
+        var root = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot();
+        var project = root.getProject("argument-classpath-" + java.util.UUID.randomUUID());
+        try {
+            project.create(null); project.open(null);
+            var description = project.getDescription();
+            description.setNatureIds(new String[] {org.eclipse.jdt.core.JavaCore.NATURE_ID});
+            project.setDescription(description, null);
+            var output = project.getFolder("bin"); output.create(true, true, null);
+            var source = project.getFolder("src"); source.create(true, true, null);
+            var javaProject = org.eclipse.jdt.core.JavaCore.create(project);
+            javaProject.setRawClasspath(new org.eclipse.jdt.core.IClasspathEntry[] {
+                    org.eclipse.jdt.core.JavaCore.newSourceEntry(source.getFullPath())}, output.getFullPath(), null);
+            String extra = java.nio.file.Path.of(System.getProperty("java.io.tmpdir")).toString();
+            try (var loader = io.github.domaresult.eclipse.ExpressionClasspath.open(javaProject, true, extra)) {
+                var urls = java.util.Arrays.asList(loader.getURLs());
+                assertTrue("Resolved classpath: " + urls, urls.contains(output.getLocation().toFile().toURI().toURL()));
+                assertTrue(urls.contains(java.nio.file.Path.of(extra).toUri().toURL()));
+            }
+        } finally { if (project.exists()) project.delete(true, true, null); }
     }
 
     @Test public void officialLibrariesWorkWhileTheJdbcDriverOwnsTheContextClassLoader() throws Exception {
