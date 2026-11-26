@@ -14,7 +14,7 @@ DBのテーブルを選択し、公式**doma-gen 2.28.0**でDAO・Entity・SQL�
 
 1. EclipseのJavaプロジェクト内でSQLファイルを保存します。
 2. Package Explorer・Project ExplorerのSQLファイル、または開いているSQLファイルのエディター上で右クリックし、**Generate Doma Result Class...**を選びます。
-3. **Connection profile**で登録済みの接続を選ぶか、JDBCドライバーのJAR、ドライバークラス、接続URL、ユーザー名・パスワードを入力します。依存JARがある場合は複数指定できます。
+3. **Connection profile**で登録済みの接続を選ぶか、**Driver JARs → Download...**でドライバーを取得します。手動のJARは**Browse...**で指定でき、依存JARがあれば複数指定できます。接続URL・ユーザー名・パスワードを入力します。
 4. 出力先のソースフォルダー、パッケージ、クラス名を指定します。名前から型を指定する場合は**Type mappings (optional)**で設定ファイルを選びます。プロジェクト直下に`name.properties`があれば初期選択されます。
 5. **Metadata SQL**でテンプレートを確認し、**Preview**を押します。ダミー引数は自動で用意され、Doma本体がSQLを組み立てます。DTO・定数を参照する場合は、先にプロジェクトをビルドしてください。
 6. 既存ファイルがあれば**Merge／Overwrite／Cancel**から選びます。**Proposed Java**と差分を確認後、新規クラスは**Generate**、既存クラスは選択した**Merge**または**Overwrite**を押して反映します。
@@ -30,6 +30,35 @@ SQLエディターから起動した場合、Eclipseのテキストバッファ�
 パスワードは**Save password in Eclipse Secure Storage**で保存するかを選べます。初期状態ではオフです。オンの場合、Password欄を[EclipseのSecure Storage](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.isv/guide/secure_storage_architecture.htm)に暗号化して保存します。Eclipseからロック解除を求められる場合があります。チェックを外すかPassword欄を空にし、プロファイルでは**Update profile**、未登録設定ではダイアログを閉じると、対象の保存済みパスワードを削除します。通常の設定ファイルにはパスワードを書き込みません。Driver class・JDBC URL・Usernameを変更すると、復元済みのパスワードをクリアします。認証情報はUsername・Password欄へ入力してください。Oracleの`user/password@...`や`password=...`、URLのユーザー情報など、認証情報を含むURLは保持しません。Secure Storageの読み込みや更新に失敗した場合は通知し、平文での代替保存は行いません。
 
 ドライバーは同梱せず、利用者が別途用意します。DBエラーでは、失敗した段階、例外クラス、SQLState、ベンダーエラー番号、取得できる場合はOracleのORA番号を表示します。**Error details...**から詳細を確認できます。接続情報を含む可能性があるドライバーの例外本文は表示・記録しません。
+
+### JDBCドライバーのダウンロード
+
+SELECT結果生成・テーブル生成の両方で、**Driver JARs**の**Browse...**横にある**Download...**から取得できます。
+
+1. DBとカタログのバージョンを選び、互換性の説明、取得JAR、ベンダー資料とライセンスのリンクを確認します。
+2. **Download and use**でMaven Centralの`https://repo.maven.apache.org/maven2/`から取得します。サイズ・SHA-256・JARの内容を照合し、全JARの確認後に**Driver JARs**と**Driver class**へ反映します。必須の依存JARも取得します。DBのURL・ユーザー名・パスワードは取得先へ送りません。URLとユーザー名は保持し、ドライバークラスが変わる場合は従来どおりパスワードをクリアします。同じクラスなら保持します。
+3. **Keep additional JARs already listed**は、手動で指定したウォレット・認証用JARなどを保持します。選んだドライバー本体と付属依存JARの既知の旧版は置き換え、取得したJARを優先します。チェックを外すと取得JARだけを使います。
+4. 接続URL・認証情報を確認してPreviewします。共有の接続プロファイルへ保存する場合は**Update profile**または**Save as...**を使います。
+
+**2026-11-26確認のカタログ**：
+
+| DB | バージョン | 一緒に取得する依存JAR |
+| --- | --- | --- |
+| Oracle | ojdbc11 23.26.4.0.0 | 通常のThin接続ではなし |
+| SQL Server | 13.6.2.jre11 | 通常のSQL認証ではなし |
+| PostgreSQL | 42.7.15 | checker-qual 3.55.1 |
+| MySQL | 26.10.0（MySQL 8.4以降）、9.7.0（MySQL 8.0以降） | protobuf-java 4.36.1／4.31.1 |
+| MariaDB | 4.0.0（Java 17以降）、3.5.11 | 通常接続ではなし |
+| Db2 LUW | 12.1.5.0 | 通常のLUW接続ではなし |
+| H2 | 2.5.252 | なし |
+
+取得JARはEclipseワークスペースのプラグイン用メタデータ内に保存し、再利用時にも検証します。別プロジェクトでも再ダウンロードせず利用できます。生成画面を開くだけでは通信せず、既存プロファイルのドライバーを自動更新しません。カタログの追加・更新はプラグイン更新で提供し、別バージョンは引き続き**Browse...**で指定できます。プロジェクトへのコピーやMaven／Gradle依存関係の変更は行いません。
+
+Eclipseのプロキシサービスがあれば**Preferences → General → Network Connections**に従い、なければJava実行環境のネットワーク設定を使います。TLSの信頼設定はEclipseの実行JREに従います。取得中は**Cancel**と待ち時間上限を利用でき、中止や失敗で接続欄は変更しません。不完全なファイルは削除し、取得・検証済みのJARは再利用用に残る場合があります。証明書の検証は維持します。
+
+ドライバーを取得できることと、すべてのサーバー・認証方式への対応は別です。Oracleウォレット／SSO、SQL ServerのAzure／Windows認証、Db2 z/OS・iのライセンスなどは、追加JARやネイティブライブラリが必要な場合があります。MariaDB 4.0のTLS既定値は`verify-full`です。サーバーに合うバージョン・設定を選んでください。MariaDBのテーブルメタデータは公式doma-genのMySQL方言を使い、JDBC URLとSQLは変更しません。取得だけならDB接続は不要です。
+
+参照元は[Oracle](https://www.oracle.com/database/technologies/appdev/jdbc-downloads.html)・[SQL Server](https://learn.microsoft.com/en-us/sql/connect/jdbc/download-microsoft-jdbc-driver-for-sql-server)・[PostgreSQL](https://jdbc.postgresql.org/download/)・[MySQL互換性](https://dev.mysql.com/doc/connector-j/en/connector-j-versions.html)・[MariaDBリリース](https://mariadb.org/connector-java/all-releases/)・[Db2の配布物／ライセンス](https://central.sonatype.com/artifact/com.ibm.db2/jcc/12.1.5.0)・[H2](https://h2database.com/html/download.html)です。取得物には各ベンダーと依存ライブラリのライセンスが適用され、プラグイン本体のApache-2.0は変わりません。通信スタブで整合性・キャッシュ・中断・失敗を検証し、7種類・9バージョンの実JARでハッシュ・Javaでの読み込み・URL認識を確認しました。H2ではJavaからの実HTTPS取得も確認しています。これらは他DBの実サーバー接続を保証する検証ではありません。
 
 ### 接続プロファイルの登録と共有
 

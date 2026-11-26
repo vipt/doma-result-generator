@@ -14,7 +14,7 @@ For SELECT result classes, use the workflow below. For table-based generation, s
 
 1. Save a `.sql` file in an Eclipse Java project.
 2. Right-click the SQL file in Package Explorer or Project Explorer, or inside its open SQL editor, and select **Generate Doma Result Class...**.
-3. Select a saved **Connection profile**, or select your JDBC driver JAR(s) and enter the driver class, URL and credentials. Drivers are supplied separately, so vendor libraries are not redistributed.
+3. Select a saved **Connection profile**, or use **Driver JARs → Download...** to fetch a catalog driver (or **Browse...** for a manually supplied JAR). Enter the JDBC URL and credentials. Drivers are downloaded separately and are not bundled in the update site.
 4. Select a Java source folder, package and class name. Optionally select a UTF-8 type mapping file; `name.properties` in the project root is initially selected when present.
 5. Review **Metadata SQL** and select **Preview**. Dummy arguments are supplied automatically and Doma builds the SQL. Build the project first when using DTOs or application constants. Changes do not modify the SQL file.
 6. If the file exists, choose **Merge**, **Overwrite** or **Cancel**. Review **Proposed Java** and the comparison, then select **Generate** for a new class or the chosen **Merge/Overwrite** action for an existing file.
@@ -32,6 +32,35 @@ SQL extensions are case-insensitive in both the menu and default class name: `se
 **Save password in Eclipse Secure Storage** is off by default. Select it to save the Password field using [Eclipse encrypted secure preferences](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.isv/guide/secure_storage_architecture.htm); Eclipse may ask to unlock its storage. To remove the saved password, clear the checkbox or Password field, then select **Update profile** for a profile or close the dialog for unregistered settings. Passwords are never saved in ordinary workspace preferences. Changing the driver class, URL or username clears the restored password. Use the separate Username and Password fields: URLs with embedded credentials, such as Oracle `user/password@...`, query `password=...`, or URL user info, are not remembered. If Secure Storage cannot be read or updated, the dialog reports it without falling back to plaintext.
 
 Raw driver exceptions are not logged or displayed, since they may include connection details. Driver errors show the operation stage, SQLState, vendor error code and Oracle ORA number when available. **Error details...** shows these codes and phase-specific guidance; generator errors give actionable explanations. Use your normal trusted driver and database connection settings. Driver-specific timeout and SSL settings can be supplied in the JDBC URL according to the driver's documentation.
+
+### Downloading JDBC drivers
+
+Both the SELECT result and table-generation connection panels offer **Download...** next to **Driver JARs → Browse...**.
+
+1. Choose the database and a catalog driver version, then review its compatibility notes, included JARs, vendor documentation and license link.
+2. Choose **Download and use**. The plug-in fetches fixed artifacts from `https://repo.maven.apache.org/maven2/`, verifies their expected size, SHA-256 and JAR contents, then fills **Driver JARs** and **Driver class**. Required non-optional dependencies are included. The database URL, username and password are never sent to the repository. URL/username fields are retained; changing the driver class clears the password as usual, while reusing the same class retains it.
+3. **Keep additional JARs already listed** preserves manually supplied wallet/authentication libraries. Recognizable old copies of the selected main driver and its included dependencies are replaced; downloaded JARs take precedence. Clear the checkbox to use only the downloaded JARs.
+4. Enter/check the JDBC URL and credentials, then use Preview. To persist changes to a shared connection profile, choose **Update profile** (or **Save as...**).
+
+Catalog checked on **2026-11-26**:
+
+| Database | Catalog versions | Included dependency JARs |
+| --- | --- | --- |
+| Oracle | ojdbc11 23.26.4.0.0 | None for basic Thin connections |
+| SQL Server | 13.6.2.jre11 | None for basic SQL authentication |
+| PostgreSQL | 42.7.15 | checker-qual 3.55.1 |
+| MySQL | 26.10.0 (MySQL 8.4+), 9.7.0 (MySQL 8.0+) | protobuf-java 4.36.1 / 4.31.1 |
+| MariaDB | 4.0.0 (Java 17+), 3.5.11 | None for basic connections |
+| Db2 LUW | 12.1.5.0 | None for basic LUW connections |
+| H2 | 2.5.252 | None |
+
+JARs are cached under the plug-in's Eclipse workspace metadata and rechecked before reuse, so other projects can reuse them without downloading again. Opening the generator does not access the repository or automatically upgrade a profile's existing driver. New catalog versions arrive with plug-in updates; **Browse...** remains available for other driver versions. The cache is not copied into projects or added to Maven/Gradle dependencies.
+
+Downloads use **Preferences → General → Network Connections** when Eclipse's proxy service is available (otherwise the Java runtime's networking settings), plus the Eclipse runtime JRE's TLS trust configuration. **Cancel** and the configurable download timeout stop waiting without applying connection-field changes. Incomplete files are removed; already completed verified JARs can remain cached. TLS certificate verification is retained.
+
+Driver availability does not guarantee every database/server/authentication combination. Oracle wallets/SSO, SQL Server Azure/Windows authentication, Db2 z/OS/i licensing and similar optional features may require additional JARs or native libraries. MariaDB 4.0 defaults to TLS `verify-full`; match the driver version/settings to the server. MariaDB table metadata uses doma-gen's official MySQL dialect; the JDBC URL and SQL are unchanged. No database connection is needed just to download a driver.
+
+Vendor references: [Oracle](https://www.oracle.com/database/technologies/appdev/jdbc-downloads.html), [SQL Server](https://learn.microsoft.com/en-us/sql/connect/jdbc/download-microsoft-jdbc-driver-for-sql-server), [PostgreSQL](https://jdbc.postgresql.org/download/), [MySQL compatibility](https://dev.mysql.com/doc/connector-j/en/connector-j-versions.html), [MariaDB releases](https://mariadb.org/connector-java/all-releases/), [Db2 artifact/license](https://central.sonatype.com/artifact/com.ibm.db2/jcc/12.1.5.0), [H2](https://h2database.com/html/download.html). Vendor/dependency licenses apply to downloaded files; this does not change the plug-in's Apache-2.0 license. Tests cover stubbed downloads, checksum/cache/partial-file handling, cancellation/timeouts and Eclipse proxy selection. Real JARs for all seven databases/nine catalog releases were checked for hashes, Java loading and URL recognition; H2 also exercised an actual Java HTTPS download. Other real server connections are not claimed by these checks.
 
 ### Registering and sharing connection profiles
 

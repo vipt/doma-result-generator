@@ -123,6 +123,7 @@ public final class TableGenerator {
     }
     private static GenDialect dialect(String url) {
         String name = JdbcUtil.inferDialectName(url);
+        if (url.toLowerCase(java.util.Locale.ROOT).startsWith("jdbc:mariadb:")) name = "mysql";
         GenDialect dialect = name == null ? null : GenDialectRegistry.lookup(name);
         if (dialect == null) throw new GenerationException("doma-gen does not recognize this JDBC URL's database dialect.");
         return dialect;

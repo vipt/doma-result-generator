@@ -119,7 +119,9 @@ final class GenerateDialog extends TitleAreaDialog {
         ConnectionSettingsStore initialSettings = selectedConnectionSettings();
         var saved = initialSettings.load();
         jars = field(config, "Driver JARs", saved.jars(), false);
-        Button browse = new Button(config, SWT.PUSH);
+        Composite driverActions = new Composite(config, SWT.NONE);
+        GridLayout driverLayout = new GridLayout(2, false); driverLayout.marginWidth = driverLayout.marginHeight = 0; driverActions.setLayout(driverLayout);
+        Button browse = new Button(driverActions, SWT.PUSH);
         browse.setText("Browse...");
         browse.addListener(SWT.Selection, e -> {
             FileDialog dialog = new FileDialog(getShell(), SWT.OPEN | SWT.MULTI);
@@ -129,6 +131,8 @@ final class GenerateDialog extends TitleAreaDialog {
                         .map(name -> new File(dialog.getFilterPath(), name).getAbsolutePath()).toList()));
             }
         });
+        Button downloadDriver = new Button(driverActions, SWT.PUSH); downloadDriver.setText("Download...");
+        downloadDriver.addListener(SWT.Selection, e -> downloadDriver());
         note(config, "Multiple driver/dependency JARs: separate paths with semicolons.");
         driverClass = fullField(config, "Driver class", saved.driverClass(), false);
         jdbcUrl = fullField(config, "JDBC URL", saved.url(), false);
@@ -568,6 +572,12 @@ final class GenerateDialog extends TitleAreaDialog {
             if (path != null) typeMappingsFile.setText(path.toString());
             setMessage("Select Preview again to use saved type mapping changes. Generated files have not been changed.");
         } catch (IllegalArgumentException e) { setErrorMessage(e.getMessage()); }
+    }
+    private void downloadDriver() {
+        var selection = JdbcDriverDownloadDialog.open(getShell(), jars.getText(), driverClass.getText(), jdbcUrl.getText());
+        if (selection == null) return;
+        jars.setText(selection.paths());
+        if (!driverClass.getText().equals(selection.driverClass())) driverClass.setText(selection.driverClass());
     }
 
     private static NullProgressMonitor cancellationMonitor(PreviewExecution.Cancellation cancellation) {

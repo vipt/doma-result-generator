@@ -98,6 +98,7 @@ public final class PreviewExecution implements AutoCloseable {
         private final AtomicBoolean canceled = new AtomicBoolean();
         private final AtomicReference<Connection> connection = new AtomicReference<>();
         private final AtomicReference<Statement> statement = new AtomicReference<>();
+        private final AtomicReference<AutoCloseable> resource = new AtomicReference<>();
         private volatile ClassLoader driverLoader;
 
         public void check() {
@@ -122,10 +123,22 @@ public final class PreviewExecution implements AutoCloseable {
         }
         public void release(Statement value) { statement.compareAndSet(value, null); }
 
+        public void trackResource(AutoCloseable value) {
+            resource.set(value);
+            if (canceled.get()) closeResource(resource.getAndSet(null));
+            check();
+        }
+        public void releaseResource(AutoCloseable value) { resource.compareAndSet(value, null); }
+
         private void cancel() {
             if (!canceled.compareAndSet(false, true)) return;
             cancelStatement(statement.getAndSet(null));
             abort(connection.getAndSet(null));
+            closeResource(resource.getAndSet(null));
+        }
+
+        private void closeResource(AutoCloseable value) {
+            if (value != null) cleanup(() -> { try { value.close(); } catch (Exception | LinkageError ignored) {} });
         }
 
         private void cancelStatement(Statement value) {

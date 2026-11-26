@@ -44,6 +44,13 @@ class TableGeneratorTest {
             assertFalse(db.isClosed());
         }
     }
+    @Test void mariaDbUsesTheOfficialMysqlMetadataDialectWithoutChangingTheConnectionUrl() throws Exception {
+        try (var db = database()) {
+            var names = generator.tables(db, "jdbc:mariadb://example.invalid/database", "APP", false, cancellation());
+            assertTrue(names.stream().anyMatch(table -> table.name().equals("EMPLOYEE")));
+            assertFalse(db.isClosed());
+        }
+    }
     @Test void officialPipelineProducesEntityDaoListenerAndKeySqlThatCompileAndRun() throws Exception {
         try (var db = database()) {
             var output = generate(db, options(true), "EMPLOYEE");

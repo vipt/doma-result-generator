@@ -7,7 +7,7 @@
     <groupId>org.eclipse.tycho</groupId><artifactId>tycho-surefire-plugin</artifactId><version>${tycho.version}</version>
     <configuration>
       <useUIHarness>false</useUIHarness><useUIThread>false</useUIThread>
-      <includes><include>**/ProposedFilesModelTest.class</include><include>**/NameMappingsEditorTest.class</include><include>**/TemplateWorkspaceTest.class</include><include>**/TableWorkspaceUpdaterTest.class</include><include>**/TableGenerationUiTest.class</include><include>**/WorkspaceClassUpdaterTest.class</include><include>**/SqlProjectContextTest.class</include><include>**/SourceCompareInputTest.class</include><include>**/ConnectionSettingsStoreTest.class</include><include>**/ConnectionProfileStoreTest.class</include><include>**/OfficialBackendRuntimeTest.class</include><include>**/GenerateHandlerTest.class</include></includes>
+      <includes><include>**/JdbcDownloadIntegrationTest.class</include><include>**/ProposedFilesModelTest.class</include><include>**/NameMappingsEditorTest.class</include><include>**/TemplateWorkspaceTest.class</include><include>**/TableWorkspaceUpdaterTest.class</include><include>**/TableGenerationUiTest.class</include><include>**/WorkspaceClassUpdaterTest.class</include><include>**/SqlProjectContextTest.class</include><include>**/SourceCompareInputTest.class</include><include>**/ConnectionSettingsStoreTest.class</include><include>**/ConnectionProfileStoreTest.class</include><include>**/OfficialBackendRuntimeTest.class</include><include>**/GenerateHandlerTest.class</include></includes>
     </configuration>
   </plugin></plugins></build>
 </project>

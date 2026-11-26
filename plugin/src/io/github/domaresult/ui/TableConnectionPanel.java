@@ -56,12 +56,15 @@ final class TableConnectionPanel extends Composite {
             catch (IOException e) { message.accept("Cannot read connection profiles."); }
         });
         jars = field("Driver JARs", false, 1);
-        button(this, "Browse...", () -> {
+        Composite driverActions = new Composite(this, SWT.NONE);
+        GridLayout driverLayout = new GridLayout(2, false); driverLayout.marginWidth = driverLayout.marginHeight = 0; driverActions.setLayout(driverLayout);
+        button(driverActions, "Browse...", () -> {
             FileDialog dialog = new FileDialog(getShell(), SWT.OPEN | SWT.MULTI);
             dialog.setFilterExtensions(new String[]{"*.jar"});
             if (dialog.open() != null) jars.setText(String.join(";", Arrays.stream(dialog.getFileNames())
                     .map(name -> new File(dialog.getFilterPath(), name).getAbsolutePath()).toList()));
         });
+        button(driverActions, "Download...", this::downloadDriver);
         driver = field("Driver class", false, 2);
         url = field("JDBC URL", false, 2);
         username = field("Username", false, 2);
@@ -96,6 +99,12 @@ final class TableConnectionPanel extends Composite {
         Text text = new Text(this, SWT.BORDER | (secret ? SWT.PASSWORD : SWT.NONE));
         text.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, span, 1));
         return text;
+    }
+    private void downloadDriver() {
+        var selection = JdbcDriverDownloadDialog.open(getShell(), jars.getText(), driver.getText(), url.getText());
+        if (selection == null) return;
+        jars.setText(selection.paths());
+        if (!driver.getText().equals(selection.driverClass())) driver.setText(selection.driverClass());
     }
     private static Button button(Composite parent, String title, Runnable action) {
         Button button = new Button(parent, SWT.PUSH); button.setText(title);

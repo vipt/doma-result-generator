@@ -43,6 +43,7 @@
         <li>ExplorerのSQLファイル、またはSQLエディター上で右クリックし、<strong>Generate Doma Result Class…</strong>から列名と型を取得してクラスを生成。SQLエディターでは未保存のテキストバッファーも使用。</li>
         <li><strong>doma-genの生成API</strong>でprivateフィールドとpublicのgetter/setterを生成。アノテーション・プロパティの型をimportし、短い型名で出力。</li>
         <li>接続プロファイルをワークスペース内で共有し、別プロジェクトでも選択して利用。前回の選択とPackageはプロジェクトごとに保持。パスワードの暗号化保存は任意。</li>
+        <li><strong>Driver JARs → Download...</strong>で主要7種類のDBのJDBCドライバーを取得。検証済みJARをワークスペース内で再利用できます。</li>
         <li><code>name.properties</code>の正規表現で、名前に一致するプロパティのJava型を指定。</li>
         <li><strong>Metadata SQL → SQL syntax</strong>でコメント・文字列のDB別の規則を選択。JDBC URLによる自動判別、<code>FOR UPDATE</code>付きSELECTにも対応。</li>
         <li><strong>Doma本体でテンプレートを処理してから、公式doma-genのResultSetMetaReaderで列情報を取得</strong>します。ダミー引数は自動で用意し、引数入力と元SQLの書き換えは不要です。</li>
@@ -83,6 +84,18 @@
       <h3 id="name-properties-ja">name.propertiesの編集</h3>
       <p>SELECT結果生成の<strong>Type mappings (optional)</strong>と、テーブル生成の<strong>name.properties (optional)</strong>で、<strong>Browse...</strong>横の<strong>Edit...</strong>から設定を編集できます。未指定ならプロジェクト直下の<code>name.properties</code>を開き、ファイルがない場合は<strong>Save</strong>で新規作成します。</p>
       <p><code>.*Datetime$=java.time.LocalDateTime</code>などのルールを編集して保存し、閉じて<strong>Preview</strong>を押し直すと反映します。正規表現・型名の構文チェック、コメントと順序を保持するUTF-8保存、外部変更のReload、未保存編集と外部変更の保護に対応します。編集にはDB接続が不要で、保存済み設定は生成のCancel後も残ります。<a href="https://github.com/vipt/doma-result-generator/blob/main/README.ja.md#namepropertiesの編集">詳しい編集手順</a>も参照してください。</p>
+
+      <h3 id="jdbc-drivers-ja">JDBCドライバーをダウンロード</h3>
+      <ol>
+        <li>SELECT結果生成またはテーブル生成の接続設定で、<strong>Driver JARs → Download...</strong>を押します。</li>
+        <li>DBとバージョンを選び、互換性の説明・取得するJAR・ベンダーのライセンスを確認します。</li>
+        <li><strong>Download and use</strong>でMaven Centralから取得し、サイズ・SHA-256・JAR内容の確認後に<strong>Driver JARs</strong>と<strong>Driver class</strong>へ反映します。必須の依存JARも取得します。</li>
+        <li>接続URL・ユーザー名・パスワードを確認し、Previewします。共有プロファイルの変更は<strong>Update profile</strong>で保存します。</li>
+      </ol>
+      <p>対応カタログ（2026-11-26確認）：<strong>Oracle</strong> ojdbc11 23.26.4.0.0、<strong>SQL Server</strong> 13.6.2.jre11、<strong>PostgreSQL</strong> 42.7.15、<strong>MySQL</strong> 26.10.0／9.7.0、<strong>MariaDB</strong> 4.0.0／3.5.11、<strong>Db2 LUW</strong> 12.1.5.0、<strong>H2</strong> 2.5.252。MySQL 26.10はサーバー8.4以降、9.7は8.0以降向けです。MariaDB 4.0はTLSの既定が<code>verify-full</code>のため、接続先に合う版と設定を選んでください。</p>
+      <p>取得先はHTTPSのMaven Centralです。DBの接続情報は送りません。URLとユーザー名は保持し、ドライバークラスが変わる場合はパスワードをクリアします。同じクラスなら保持します。JARはワークスペースのメタデータ内に保存し、再利用時にも照合します。画面を開くだけではダウンロードせず、登録済みドライバーを自動更新しません。</p>
+      <p><strong>Keep additional JARs already listed</strong>で手動指定のウォレット・認証用JARなどを保持できます。選んだドライバーと付属依存JARの既知の旧版は置き換えます。高度な認証やDb2のライセンス用JAR・ネイティブライブラリーなどは別途必要な場合があります。別バージョンは従来の<strong>Browse...</strong>でも指定できます。</p>
+      <p>プロキシはEclipseの<strong>General → Network Connections</strong>を利用します（サービスが使えない場合はJavaの設定）。<strong>Cancel</strong>とダウンロード用タイムアウトに対応し、途中の失敗では接続欄を変更しません。ダウンロードだけならDB接続は不要です。各版の依存JAR・ライセンス・検証範囲は<a href="https://github.com/vipt/doma-result-generator/blob/main/README.ja.md#jdbcドライバーのダウンロード">日本語README</a>をご覧ください。</p>
 
       <h3 id="connection-profiles-ja">接続プロファイルの使い方</h3>
       <ol>
@@ -134,6 +147,7 @@
         <li>If the file exists, <strong>choose Merge, Overwrite or Cancel when pressing Preview</strong>. Merge retains custom code; Overwrite regenerates the entire file. Both show a read-only comparison before the final action saves the file.</li>
         <li>Merge reuses existing unmarked fields when types and Doma column mappings match, keeping constructors, comments and custom methods unchanged while adding new columns. Overwrite removes existing custom members and comments.</li>
         <li>Share named connection profiles across projects in one workspace. Remember each project's last profile and Package, with optional encrypted password storage in Eclipse Secure Storage.</li>
+        <li>Download JDBC drivers for seven major databases with <strong>Driver JARs → Download...</strong> and reuse verified JARs across workspace projects.</li>
         <li>Cancel the preview wait from its progress dialog even while connecting. Set <strong>Preview timeout (seconds)</strong> to limit the wait (default: 30 seconds). Late results are discarded.</li>
       </ul>
       <h3 id="table-generation-en">Generate DAO, Entity and SQL from tables</h3>
@@ -160,6 +174,18 @@
       <h3 id="name-properties-en">Edit name.properties</h3>
       <p>Choose <strong>Edit...</strong> beside <strong>Browse...</strong> under <strong>Type mappings (optional)</strong> in the SELECT result generator or <strong>name.properties (optional)</strong> in the table generator. An empty path opens <code>name.properties</code> in the project root; a missing file is created only when you <strong>Save</strong>.</p>
       <p>Edit a rule such as <code>.*Datetime$=java.time.LocalDateTime</code>, save, close and choose <strong>Preview</strong> again. Includes regex/type-name syntax checks, UTF-8 text preserving comments/order, Reload and protection for unsaved Eclipse buffers or external edits. No database connection is needed to edit; explicit saves remain after canceling generation. See the <a href="https://github.com/vipt/doma-result-generator/blob/main/README.md#edit-nameproperties">editing guide</a>.</p>
+
+      <h3 id="jdbc-drivers-en">Download JDBC drivers</h3>
+      <ol>
+        <li>In either generator's connection panel, select <strong>Driver JARs → Download...</strong>.</li>
+        <li>Choose a database/version and review its compatibility notes, included JARs and vendor license.</li>
+        <li>Select <strong>Download and use</strong>. HTTPS downloads from Maven Central are checked against pinned sizes, SHA-256 hashes and JAR contents before filling <strong>Driver JARs</strong> and <strong>Driver class</strong>. Required dependency JARs are included.</li>
+        <li>Check the JDBC URL and credentials, then Preview. Select <strong>Update profile</strong> to persist shared profile changes.</li>
+      </ol>
+      <p>Catalog checked 2026-11-26: <strong>Oracle</strong> ojdbc11 23.26.4.0.0; <strong>SQL Server</strong> 13.6.2.jre11; <strong>PostgreSQL</strong> 42.7.15; <strong>MySQL</strong> 26.10.0 / 9.7.0; <strong>MariaDB</strong> 4.0.0 / 3.5.11; <strong>Db2 LUW</strong> 12.1.5.0; <strong>H2</strong> 2.5.252. MySQL 26.10 requires server 8.4+, whereas 9.7 supports 8.0+. MariaDB 4.0 defaults to TLS <code>verify-full</code>; choose settings compatible with your server.</p>
+      <p>Database connection details are never sent to the repository. URL/username stay unchanged; changing the driver class clears the password, while keeping the same class retains it. JARs are cached in workspace metadata and verified before reuse. Opening the generator does not download or upgrade drivers automatically.</p>
+      <p><strong>Keep additional JARs already listed</strong> preserves manual wallet/authentication JARs while replacing recognizable old copies of the selected driver and its included dependencies. Advanced authentication, Db2 license libraries and native libraries may need separate installation. <strong>Browse...</strong> remains available for other driver versions.</p>
+      <p>Downloads use Eclipse's <strong>General → Network Connections</strong> proxy service when available, otherwise Java networking settings. <strong>Cancel</strong> and a separate download timeout leave connection fields unchanged on failure. Downloading alone requires no database connection. See the <a href="https://github.com/vipt/doma-result-generator/blob/main/README.md#downloading-jdbc-drivers">README</a> for dependencies, license links and verification limits.</p>
 
       <h3 id="connection-profiles-en">Using connection profiles</h3>
       <ol>
