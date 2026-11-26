@@ -228,6 +228,16 @@ Column labels become camel case field names. `@Column` retains each original lab
 
 Select a file in **Configuration → Type mappings (optional)**. A project-root `name.properties` is initially selected when it exists. The file is reloaded each time **Preview** is pressed; save edits before previewing. Clear the field to use JDBC mapping alone. Any filename can be selected.
 
+### Edit name.properties
+
+Both generation dialogs offer **Edit...** beside the mapping file's **Browse...** button: **Type mappings (optional)** for SELECT results and **name.properties (optional)** for tables. Select your existing file or leave the path blank to edit `<project>/name.properties`.
+
+1. Choose **Edit...**, change the plain-text rules, and select **Save**. A missing file starts with a commented example; no file is created until Save. Rules use `pattern=fully.qualified.JavaType`, for example `.*Datetime$=java.time.LocalDateTime`, without spaces around `=` for compatibility with official table generation.
+2. Save validates regular expressions and Java type-name syntax using the existing mapping validator. Comments, rule order, regular-expression escapes and formatting are retained as UTF-8. Use types available to the target project and verify their Doma compatibility by building the project; review capture-based replacements in Preview.
+3. Close the editor and select **Preview** again. Opening the editor invalidates the prior generated preview. The saved rules are reloaded by both SELECT result and table generation; review the proposed files/differences before applying them.
+
+**Reload** reads external changes. Unsaved changes offer **Save / Discard / Cancel**. A dirty Eclipse text-editor buffer or on-disk changes since loading prevent overwriting. Editing needs no database connection, and explicit saves remain if the generator is later canceled.
+
 The Doma-Gen-style file is UTF-8 and contains ordered `property-name-regex=JavaType` rules:
 
 ```properties

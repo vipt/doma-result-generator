@@ -154,7 +154,9 @@ final class GenerateDialog extends TitleAreaDialog {
         IFile defaults = sqlFile.getProject().getFile("name.properties");
         String defaultFile = defaults.exists() && defaults.getLocation() != null ? defaults.getLocation().toOSString() : "";
         typeMappingsFile = field(config, "Type mappings (optional)", defaultFile, false);
-        Button browseMappings = new Button(config, SWT.PUSH);
+        Composite mappingActions = new Composite(config, SWT.NONE);
+        GridLayout mappingLayout = new GridLayout(2, false); mappingLayout.marginWidth = mappingLayout.marginHeight = 0; mappingActions.setLayout(mappingLayout);
+        Button browseMappings = new Button(mappingActions, SWT.PUSH);
         browseMappings.setText("Browse...");
         browseMappings.addListener(SWT.Selection, e -> {
             FileDialog dialog = new FileDialog(getShell(), SWT.OPEN);
@@ -162,6 +164,8 @@ final class GenerateDialog extends TitleAreaDialog {
             String selected = dialog.open();
             if (selected != null) typeMappingsFile.setText(selected);
         });
+        Button editMappings = new Button(mappingActions, SWT.PUSH); editMappings.setText("Edit...");
+        editMappings.addListener(SWT.Selection, e -> editMappings());
         note(config, "UTF-8 name.properties rules match generated camelCase property names; the first match overrides JDBC types.");
         new Label(config, SWT.NONE).setText("Source folder");
         sourceFolder = new Combo(config, SWT.READ_ONLY);
@@ -555,6 +559,15 @@ final class GenerateDialog extends TitleAreaDialog {
         } catch (CoreException e) {
             setErrorMessage("Cannot read the target Java class. Check its saved state, encoding and permissions.");
         }
+    }
+
+    private void editMappings() {
+        invalidatePreview();
+        try {
+            Path path = NameMappingsEditorDialog.edit(getShell(), sqlFile.getProject(), typeMappingsFile.getText());
+            if (path != null) typeMappingsFile.setText(path.toString());
+            setMessage("Select Preview again to use saved type mapping changes. Generated files have not been changed.");
+        } catch (IllegalArgumentException e) { setErrorMessage(e.getMessage()); }
     }
 
     private static NullProgressMonitor cancellationMonitor(PreviewExecution.Cancellation cancellation) {

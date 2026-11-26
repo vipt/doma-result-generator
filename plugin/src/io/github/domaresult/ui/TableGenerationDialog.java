@@ -84,7 +84,7 @@ final class TableGenerationDialog extends TitleAreaDialog {
         qualified = check(config, "Include schema in @Table", settings.getBoolean("qualified", false));
         IFile defaultMappings = project.getFile("name.properties");
         String defaultPath = defaultMappings.exists() && defaultMappings.getLocation() != null ? defaultMappings.getLocation().toOSString() : "";
-        mappings = pathField(config, "name.properties (optional)", settings.get("mappings", defaultPath), false);
+        mappings = pathField(config, "name.properties (optional)", settings.get("mappings", defaultPath), false, this::editMappings);
         templates = pathField(config, "doma-gen template directory (optional)", settings.get("templates", ""), true);
         Composite templateActions = new Composite(config, SWT.NONE);
         templateActions.setLayout(new GridLayout(2, false));
@@ -186,13 +186,21 @@ final class TableGenerationDialog extends TitleAreaDialog {
         field.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false)); field.setText(initial); return field;
     }
     private Text pathField(Composite body, String title, String initial, boolean directory) {
-        Text field = field(body, title, initial); Button browse = new Button(body, SWT.PUSH); browse.setText("Browse...");
+        return pathField(body, title, initial, directory, null);
+    }
+    private Text pathField(Composite body, String title, String initial, boolean directory, Runnable edit) {
+        Text field = field(body, title, initial);
+        Composite actions = new Composite(body, SWT.NONE);
+        GridLayout layout = new GridLayout(2, false); layout.marginWidth = layout.marginHeight = 0; actions.setLayout(layout);
+        Button browse = new Button(actions, SWT.PUSH); browse.setText("Browse...");
         browse.addListener(SWT.Selection, e -> {
             String path;
             if (directory) path = new DirectoryDialog(getShell()).open();
             else { FileDialog dialog = new FileDialog(getShell()); dialog.setFilterExtensions(new String[]{"*.properties", "*"}); path = dialog.open(); }
             if (path != null) field.setText(path);
-        }); return field;
+        });
+        if (edit != null) { Button button = new Button(actions, SWT.PUSH); button.setText("Edit..."); button.addListener(SWT.Selection, e -> edit.run()); }
+        return field;
     }
     private Combo folders(Composite parent, String title, String initial, boolean resource) {
         new Label(parent, SWT.NONE).setText(title);
@@ -287,6 +295,14 @@ final class TableGenerationDialog extends TitleAreaDialog {
         } catch (Exception e) { showError(e); }
     }
     private static Path path(Text input) { return input.getText().isBlank() ? null : Path.of(input.getText().trim()); }
+    private void editMappings() {
+        clearPreview();
+        try {
+            Path path = NameMappingsEditorDialog.edit(getShell(), project, mappings.getText());
+            if (path != null) mappings.setText(path.toString());
+            setMessage("Select Preview again to use saved type mapping changes. Generated files have not been changed.");
+        } catch (IllegalArgumentException e) { setErrorMessage(e.getMessage()); }
+    }
     private void editTemplates() {
         clearPreview();
         try {

@@ -36,34 +36,15 @@ public final class TemplateFiles {
         return target;
     }
     public Snapshot read(String name) throws IOException {
-        Path file = file(name);
-        FileTime modified = Files.getLastModifiedTime(file);
-        String source = Files.readString(file, StandardCharsets.UTF_8);
-        if (!modified.equals(Files.getLastModifiedTime(file))) throw new GenerationException("The template changed while loading. Reload it before editing.");
-        return new Snapshot(name, source, modified);
+        var snapshot = new Utf8SettingsFile(file(name)).read();
+        if (!snapshot.exists()) throw new NoSuchFileException(name);
+        return new Snapshot(name, snapshot.source(), snapshot.modified());
     }
     public Snapshot save(Snapshot before, String source) throws IOException {
         DomaGenTemplates.validate(before.name(), source);
-        Path file = file(before.name());
-        verify(before);
-        if (!Files.isWritable(file)) throw new IOException("The template is read-only.");
-        Path temporary = Files.createTempFile(file.getParent(), ".doma-ftl-", ".tmp");
-        try {
-            Files.writeString(temporary, source, StandardCharsets.UTF_8);
-            try { Files.setPosixFilePermissions(temporary, Files.getPosixFilePermissions(file)); }
-            catch (UnsupportedOperationException ignored) { /* Non-POSIX file system. */ }
-            verify(before);
-            try { Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }
-            catch (AtomicMoveNotSupportedException e) { Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING); }
-        } finally { Files.deleteIfExists(temporary); }
-        return read(before.name());
+        var saved = new Utf8SettingsFile(file(before.name())).save(new Utf8SettingsFile.Snapshot(before.source(), before.modified()), source);
+        return new Snapshot(before.name(), saved.source(), saved.modified());
     }
-    private void verify(Snapshot before) throws IOException {
-        if (!Files.isRegularFile(file(before.name()), LinkOption.NOFOLLOW_LINKS)) throw changed();
-        Snapshot current = read(before.name());
-        if (!before.modified().equals(current.modified()) || !before.source().equals(current.source())) throw changed();
-    }
-    private static GenerationException changed() { return new GenerationException("The template changed on disk. Reload it and review the latest contents before saving."); }
 
     /** Add only absent files, including an intentionally empty lib.ftl; never replace custom templates. */
     public List<String> copyMissingDefaults() throws IOException {

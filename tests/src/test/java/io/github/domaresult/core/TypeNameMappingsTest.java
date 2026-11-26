@@ -16,6 +16,19 @@ import org.junit.jupiter.params.provider.ValueSource;
 class TypeNameMappingsTest {
     @TempDir Path directory;
 
+    @Test void editedSettingsAreReloadedBySelectMetadataGenerationOnTheNextPreview() throws Exception {
+        var file = new NameMappingsFile(directory.resolve("name.properties"));
+        var before = file.save(file.read(), ".*Datetime$=java.time.LocalDateTime\n");
+        try (var connection = DriverManager.getConnection("jdbc:h2:mem:" + UUID.randomUUID())) {
+            String sql = "select CURRENT_TIMESTAMP as CREATED_DATETIME";
+            var first = new JdbcMetadataReader().read(connection,sql,"example.Result",TypeNameMappings.read(file.path()));
+            assertEquals("java.time.LocalDateTime",first.get(0).javaType());
+            file.save(before,".*Datetime$=java.sql.Timestamp\n");
+            var next = new JdbcMetadataReader().read(connection,sql,"example.Result",TypeNameMappings.read(file.path()));
+            assertEquals("java.sql.Timestamp",next.get(0).javaType());
+        }
+    }
+
     @Test void userRuleMatchesGeneratedCamelCaseNameAndOverridesJdbcType() throws Exception {
         Path file = directory.resolve("name.properties");
         Files.writeString(file, ".*Datetime$=java.time.LocalDateTime\n", StandardCharsets.UTF_8);

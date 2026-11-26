@@ -142,6 +142,19 @@ class TableGeneratorTest {
             assertFalse(failure.getMessage().contains("missingProperty"));
         }
     }
+    @Test void editedNamePropertiesAreReloadedByOfficialTableGenerationOnTheNextPreview() throws Exception {
+        var file = new NameMappingsFile(temp.resolve("name.properties"));
+        var saved = file.save(file.read(), ".*Datetime$=java.time.LocalDateTime\n");
+        var options = new Options("example.entity", "example.dao", false, true, file.path(), null);
+        try (var db = database()) {
+            var first = generate(db, options, "EMPLOYEE");
+            assertTrue(first.stream().filter(a -> a.kind()==Kind.ENTITY).findFirst().orElseThrow().source().contains("private LocalDateTime createdDatetime;"));
+            file.save(saved, ".*Datetime$=java.sql.Timestamp\n");
+            var next = generate(db, options, "EMPLOYEE");
+            assertTrue(next.stream().filter(a -> a.kind()==Kind.ENTITY).findFirst().orElseThrow().source().contains("private Timestamp createdDatetime;"));
+            compile(next);
+        }
+    }
     @Test void rejectsPathsEscapingOutputFoldersAndInvalidPackages() {
         for (String path : List.of("../outside.java", "/outside.java", "a/../../outside.sql", "a\\..\\outside.java")) {
             assertThrows(GenerationException.class, () -> new Artifact(Kind.SQL, path, ""));

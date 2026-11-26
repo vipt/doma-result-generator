@@ -79,6 +79,10 @@
       </ol>
       <p>FTLの編集にDB接続は不要です。明示的に保存・追加・コピーしたFTLは、生成画面をCancelしても残ります。別のEclipseエディターの未保存編集や、読み込み後のディスク上の変更を上書きしません。詳しい手順は<a href="https://github.com/vipt/doma-result-generator/blob/main/README.ja.md#ftlテンプレートの編集">日本語README</a>をご覧ください。</p>
 
+      <h3 id="name-properties-ja">name.propertiesの編集</h3>
+      <p>SELECT結果生成の<strong>Type mappings (optional)</strong>と、テーブル生成の<strong>name.properties (optional)</strong>で、<strong>Browse...</strong>横の<strong>Edit...</strong>から設定を編集できます。未指定ならプロジェクト直下の<code>name.properties</code>を開き、ファイルがない場合は<strong>Save</strong>で新規作成します。</p>
+      <p><code>.*Datetime$=java.time.LocalDateTime</code>などのルールを編集して保存し、閉じて<strong>Preview</strong>を押し直すと反映します。正規表現・型名の構文チェック、コメントと順序を保持するUTF-8保存、外部変更のReload、未保存編集と外部変更の保護に対応します。編集にはDB接続が不要で、保存済み設定は生成のCancel後も残ります。<a href="https://github.com/vipt/doma-result-generator/blob/main/README.ja.md#namepropertiesの編集">詳しい編集手順</a>も参照してください。</p>
+
       <h3 id="connection-profiles-ja">接続プロファイルの使い方</h3>
       <ol>
         <li>既存の設定があるプロジェクトで生成ダイアログを開きます。<strong>Connection profile → Unregistered (project settings)</strong>に従来の接続情報を表示します。</li>
@@ -150,6 +154,10 @@
         <li>Close the editor and choose <strong>Preview</strong> again to load saved changes and inspect the generated output/differences.</li>
       </ol>
       <p>No database connection is needed to edit templates. Explicit template saves/additions/copies remain if the generator is later canceled. Unsaved Eclipse editor buffers and on-disk changes since loading are protected from overwriting. See the <a href="https://github.com/vipt/doma-result-generator/blob/main/README.md#edit-ftl-templates">README</a> for details.</p>
+
+      <h3 id="name-properties-en">Edit name.properties</h3>
+      <p>Choose <strong>Edit...</strong> beside <strong>Browse...</strong> under <strong>Type mappings (optional)</strong> in the SELECT result generator or <strong>name.properties (optional)</strong> in the table generator. An empty path opens <code>name.properties</code> in the project root; a missing file is created only when you <strong>Save</strong>.</p>
+      <p>Edit a rule such as <code>.*Datetime$=java.time.LocalDateTime</code>, save, close and choose <strong>Preview</strong> again. Includes regex/type-name syntax checks, UTF-8 text preserving comments/order, Reload and protection for unsaved Eclipse buffers or external edits. No database connection is needed to edit; explicit saves remain after canceling generation. See the <a href="https://github.com/vipt/doma-result-generator/blob/main/README.md#edit-nameproperties">editing guide</a>.</p>
 
       <h3 id="connection-profiles-en">Using connection profiles</h3>
       <ol>
