@@ -82,6 +82,17 @@ For existing **Java** without a previous generation baseline, Merge preserves ex
 
 Baselines contain the last generator output and are saved only in Eclipse workspace metadata after generation; they are not added to the project or Git. A different workspace has no baseline. Overwrite replaces the complete file, including handwritten code/comments; existing encodings, BOMs and line endings are retained and Eclipse local history is kept. Always inspect the comparison, especially existing Java class annotations/types and custom templates. A batch does not remove obsolete files outside its proposed output list.
 
+### Edit FTL templates
+
+Choose **Configuration → Edit templates...** in the table generator. It edits the selected template directory. If the directory field is blank, it opens `<project>/doma-gen-templates`; no folder/files are created until you choose **Copy missing defaults** or **New...**.
+
+1. Choose **Copy missing defaults** to create editable copies of `entity.ftl`, `dao.ftl`, `entityListener.ftl`, `selectById.sql.ftl`, `selectByIdAndVersion.sql.ftl` and `lib.ftl`. Existing files, including empty ones, are kept. The copied entity template uses the same private fields as the plug-in's defaults.
+2. Select a file, edit it and choose **Save**. The editor uses UTF-8 and validates syntax with FreeMarker itself. Unsaved edits offer **Save / Discard / Cancel** when switching or closing. **New...** adds a template such as `selectAll.sql.ftl`; **Reload** reads changes made outside the dialog.
+3. Close the template editor and choose **Preview** again. Opening the editor invalidates the previous generated preview; each Preview loads saved template contents afresh. Template evaluation errors identify the FTL file and line. Data-model names/properties follow official doma-gen; its template headers identify the model classes.
+4. Review the generated files and their merge/overwrite actions, compare the changes, then generate.
+
+`lib.ftl` is the shared template imported by official defaults (for example, author/copyright settings). The editor also lists nested `.ftl` files. Templates with unsaved edits in an Eclipse text editor, or files changed on disk since loading, cannot be overwritten here; save/revert the other editor and Reload first. Explicit **Save / New / Copy** writes persist even when you later cancel the generator. Editing templates requires no database connection. These FTL files configure table-based DAO/Entity/SQL generation.
+
 ## Example
 
 ```sql

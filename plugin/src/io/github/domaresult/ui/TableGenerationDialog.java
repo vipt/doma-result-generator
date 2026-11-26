@@ -86,6 +86,14 @@ final class TableGenerationDialog extends TitleAreaDialog {
         String defaultPath = defaultMappings.exists() && defaultMappings.getLocation() != null ? defaultMappings.getLocation().toOSString() : "";
         mappings = pathField(config, "name.properties (optional)", settings.get("mappings", defaultPath), false);
         templates = pathField(config, "doma-gen template directory (optional)", settings.get("templates", ""), true);
+        Composite templateActions = new Composite(config, SWT.NONE);
+        templateActions.setLayout(new GridLayout(2, false));
+        templateActions.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 3, 1));
+        Button editTemplates = new Button(templateActions, SWT.PUSH); editTemplates.setText("Edit templates...");
+        editTemplates.addListener(SWT.Selection, e -> editTemplates());
+        Label editNote = new Label(templateActions, SWT.WRAP);
+        editNote.setText("Edit FTL files or copy missing defaults. Save the template, then Preview again.");
+        editNote.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
         note(config, "The directory can contain your existing entity.ftl, dao.ftl, entityListener.ftl and *.sql.ftl. Templates run locally with doma-gen. Default entities have private fields and public accessors; a custom entity.ftl controls its own visibility.");
         note(config, "DAO and SQL generation follows doma-gen: primary keys produce selectById.sql; a version column also produces selectByIdAndVersion.sql. Tables without primary keys have no default SELECT SQL. No database data is changed.");
         for (Text text : List.of(entityPackage, daoPackage, mappings, templates)) text.addModifyListener(e -> clearPreview());
@@ -279,6 +287,20 @@ final class TableGenerationDialog extends TitleAreaDialog {
         } catch (Exception e) { showError(e); }
     }
     private static Path path(Text input) { return input.getText().isBlank() ? null : Path.of(input.getText().trim()); }
+    private void editTemplates() {
+        clearPreview();
+        try {
+            Path directory = path(templates);
+            if (directory == null) {
+                if (project.getLocation() == null) throw new GenerationException("Select a local template directory first.");
+                directory = project.getLocation().append("doma-gen-templates").toFile().toPath();
+            }
+            TemplateEditorDialog dialog = new TemplateEditorDialog(getShell(), directory);
+            dialog.open();
+            if (java.nio.file.Files.isDirectory(dialog.directory())) templates.setText(dialog.directory().toString());
+            setMessage("Select Preview again to use saved template changes. Generated files have not been changed.");
+        } catch (IllegalArgumentException e) { setErrorMessage(e.getMessage()); }
+    }
     private <T> T runDb(String title, TableConnectionPanel.Spec spec, Function<PreviewExecution.Cancellation, T> work) throws Exception {
         stage.set(JdbcErrorDetails.Stage.CONNECTING);
         oracleDriver = spec.driver().toLowerCase(Locale.ROOT).contains("oracle");

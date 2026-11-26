@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.io.StringWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -19,7 +18,6 @@ import java.sql.SQLFeatureNotSupportedException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import javax.sql.DataSource;
 import org.seasar.doma.extension.gen.*;
@@ -112,6 +110,14 @@ public final class TableGenerator {
     private static SQLException failure(GenException error) {
         for (Throwable cause = error.getCause(); cause != null; cause = cause.getCause()) {
             if (cause instanceof SQLException sql) return sql;
+            if (cause instanceof freemarker.core.ParseException syntax) {
+                throw new GenerationException("FTL syntax error in " + syntax.getTemplateName() + " at line " + syntax.getLineNumber()
+                        + ", column " + syntax.getColumnNumber() + ". Open Edit templates and check the FreeMarker syntax.");
+            }
+            if (cause instanceof freemarker.template.TemplateException template) {
+                throw new GenerationException("FTL processing failed in " + template.getTemplateSourceName() + " at line " + template.getLineNumber()
+                        + ". Open Edit templates and check the data-model property or expression.");
+            }
         }
         throw new GenerationException("Official doma-gen could not generate the selected tables. Check column types, name.properties and templates.");
     }
@@ -165,10 +171,9 @@ public final class TableGenerator {
             super("UTF-8", templates == null ? null : templates.toFile());
             // Keep the official model and template, changing only default field visibility.
             // An explicitly supplied entity.ftl takes precedence over this default.
-            try (var resource = Generator.class.getResourceAsStream("template/entity.ftl")) {
+            try {
                 StringTemplateLoader defaults = new StringTemplateLoader();
-                defaults.putTemplate("entity.ftl", new String(Objects.requireNonNull(resource).readAllBytes(), StandardCharsets.UTF_8)
-                        .replace("<#if !useAccessor>public </#if>", "private "));
+                defaults.putTemplate("entity.ftl", DomaGenTemplates.source("entity.ftl"));
                 List<TemplateLoader> loaders = new ArrayList<>();
                 if (templates != null) loaders.add(new FileTemplateLoader(templates.toFile()));
                 loaders.add(defaults);

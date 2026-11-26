@@ -115,6 +115,33 @@ class TableGeneratorTest {
             assertTrue(assertThrows(GenerationException.class, () -> generator.generate(db, URL, "%", false, selected, options(false), cancellation())).getMessage().contains("same file"));
         }
     }
+    @Test void copiedAndEditedTemplatesAreAppliedOnTheVeryNextPreviewWithoutTemplateCacheDelay() throws Exception {
+        var files = new TemplateFiles(temp.resolve("templates")); files.copyMissingDefaults();
+        var options = new Options("example.entity", "example.dao", true, true, null, files.directory());
+        try (var db = database()) {
+            var first = generate(db, options, "EMPLOYEE");
+            assertTrue(first.stream().filter(a -> a.kind() == Kind.ENTITY).findFirst().orElseThrow().source().contains("private Long id;"));
+            for (String name : List.of("entity.ftl", "dao.ftl")) {
+                var before = files.read(name); files.save(before, "// Edited " + name + "\n" + before.source());
+            }
+            files.save(files.read("lib.ftl"), "<#assign author = \"Template Editor\">\n");
+            var next = generate(db, options, "EMPLOYEE");
+            assertTrue(next.stream().filter(a -> a.kind() == Kind.ENTITY).findFirst().orElseThrow().source().contains("// Edited entity.ftl"));
+            assertTrue(next.stream().filter(a -> a.kind() == Kind.DAO).findFirst().orElseThrow().source().contains("// Edited dao.ftl"));
+            assertTrue(next.stream().filter(a -> a.kind() == Kind.LISTENER).findFirst().orElseThrow().source().contains("@author Template Editor"));
+            compile(next);
+        }
+    }
+    @Test void templateEvaluationErrorsIdentifyTheTemplateAndLineWithoutLoggingModelValues() throws Exception {
+        var files = new TemplateFiles(temp.resolve("templates")); files.copyMissingDefaults();
+        files.save(files.read("dao.ftl"), "${missingProperty}\n");
+        try (var db = database()) {
+            var failure = assertThrows(GenerationException.class, () -> generate(db,
+                    new Options("example.entity", "example.dao", false, true, null, files.directory()), "EMPLOYEE"));
+            assertTrue(failure.getMessage().contains("FTL processing failed in dao.ftl at line 1"));
+            assertFalse(failure.getMessage().contains("missingProperty"));
+        }
+    }
     @Test void rejectsPathsEscapingOutputFoldersAndInvalidPackages() {
         for (String path : List.of("../outside.java", "/outside.java", "a/../../outside.sql", "a\\..\\outside.java")) {
             assertThrows(GenerationException.class, () -> new Artifact(Kind.SQL, path, ""));

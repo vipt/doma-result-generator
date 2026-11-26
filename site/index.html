@@ -70,6 +70,15 @@
       <p>JavaのMergeは手動追加メンバーやコメントを保持します。初回は既存メンバーとクラスのアノテーションを保持し、足りないアノテーション・メンバー・importを追加します。前回の生成結果がない既存SQLは、そのまま保持します。以降はワークスペース内に保存した前回の生成結果を使ってマージし、競合があれば更新を止めます。Overwriteは手動コードとコメントも含めて置き換えるため、差分を確認してください。</p>
       <p>接続プロファイルはSELECT結果生成と共通です。パッケージ・出力先などのテーブル生成設定もプロジェクトごとに保持します。カスタムテンプレートとスキーマの扱い、マージの範囲は<a href="https://github.com/vipt/doma-result-generator/blob/main/README.ja.md#table-generation">日本語README</a>に記載しています。</p>
 
+      <h3 id="ftl-templates-ja">FTLテンプレートの編集</h3>
+      <ol>
+        <li>テーブル生成画面の<strong>Configuration → Edit templates...</strong>を開きます。未指定ならプロジェクト内の<code>doma-gen-templates</code>を使用します。</li>
+        <li><strong>Copy missing defaults</strong>でEntity・DAO・Listener・SQL・共通の<code>lib.ftl</code>をコピーできます。既存のFTLは上書きしません。</li>
+        <li>ファイルを選択して編集し、<strong>Save</strong>でUTF-8保存します。FreeMarkerの構文検査、未保存編集の確認、外部変更のReload、<strong>New...</strong>でのFTL追加に対応します。</li>
+        <li>閉じてもう一度<strong>Preview</strong>を押し、生成内容と差分を確認します。保存した変更をそのまま読み直します。</li>
+      </ol>
+      <p>FTLの編集にDB接続は不要です。明示的に保存・追加・コピーしたFTLは、生成画面をCancelしても残ります。別のEclipseエディターの未保存編集や、読み込み後のディスク上の変更を上書きしません。詳しい手順は<a href="https://github.com/vipt/doma-result-generator/blob/main/README.ja.md#ftlテンプレートの編集">日本語README</a>をご覧ください。</p>
+
       <h3 id="connection-profiles-ja">接続プロファイルの使い方</h3>
       <ol>
         <li>既存の設定があるプロジェクトで生成ダイアログを開きます。<strong>Connection profile → Unregistered (project settings)</strong>に従来の接続情報を表示します。</li>
@@ -132,6 +141,15 @@
       </ol>
       <p>Uses official doma-gen 2.28.0 table metadata, descriptor factories and FreeMarker generation; Gradle is not required. Reuse <code>dao.ftl</code>, <code>entityListener.ftl</code>, <code>entity.ftl</code> and <code>*.sql.ftl</code>. Primary keys, version columns, identity and type mappings follow the official generator. Tables without primary keys have no default SELECT SQL. Database data is not modified.</p>
       <p>Java merges retain custom members and comments; initial adoption keeps existing members/class annotations and adds missing annotations/members/imports. Existing SQL without a previous generation baseline is kept unchanged. Later merges use workspace-local baselines and stop on conflicts. Overwrite replaces entire files, including custom code/comments. Reuses SELECT generation connection profiles and remembers table-generation defaults per project. See the <a href="https://github.com/vipt/doma-result-generator/blob/main/README.md#generate-from-database-tables">README</a> for templates, schema handling and merge limits.</p>
+
+      <h3 id="ftl-templates-en">Edit FTL templates</h3>
+      <ol>
+        <li>Open <strong>Configuration → Edit templates...</strong> in the table generator. An empty directory field uses <code>doma-gen-templates</code> in your project.</li>
+        <li><strong>Copy missing defaults</strong> adds editable Entity/DAO/Listener/SQL templates and shared <code>lib.ftl</code>. Existing FTL files are kept.</li>
+        <li>Select a file, edit it and <strong>Save</strong> in UTF-8. Supports FreeMarker syntax validation, unsaved-change prompts, Reload for external changes and <strong>New...</strong> for additional templates.</li>
+        <li>Close the editor and choose <strong>Preview</strong> again to load saved changes and inspect the generated output/differences.</li>
+      </ol>
+      <p>No database connection is needed to edit templates. Explicit template saves/additions/copies remain if the generator is later canceled. Unsaved Eclipse editor buffers and on-disk changes since loading are protected from overwriting. See the <a href="https://github.com/vipt/doma-result-generator/blob/main/README.md#edit-ftl-templates">README</a> for details.</p>
 
       <h3 id="connection-profiles-en">Using connection profiles</h3>
       <ol>
