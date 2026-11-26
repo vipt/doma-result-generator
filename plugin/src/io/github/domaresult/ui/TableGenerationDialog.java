@@ -23,7 +23,6 @@ import org.eclipse.jface.dialogs.*;
 import org.eclipse.jface.viewers.*;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.ScrolledComposite;
-import org.eclipse.swt.custom.StyledText;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.layout.*;
 import org.eclipse.swt.widgets.*;
@@ -39,25 +38,18 @@ final class TableGenerationDialog extends TitleAreaDialog {
     private final Preferences settings;
     private final Set<TableGenerator.Table> selected = new HashSet<>();
     private List<TableGenerator.Table> tables = List.of();
-    private final List<Entry> entries = new ArrayList<>();
+    private ProposedFilesModel filesModel;
+    private ProposedFilesPanel proposedFiles;
     private TableConnectionPanel connection;
     private Text schema, entityPackage, daoPackage, mappings, templates, filter;
-    private Combo javaFolder, sqlFolder, action;
+    private Combo javaFolder, sqlFolder;
     private Button views, listener, qualified;
     private CheckboxTableViewer tableViewer;
-    private org.eclipse.swt.widgets.Table files;
-    private StyledText source;
-    private Label fileNote, count;
+    private Label count;
     private TabFolder tabs;
-    private boolean reviewed, selectingAction;
     private String errorDetails;
     private boolean oracleDriver;
     private final AtomicReference<JdbcErrorDetails.Stage> stage = new AtomicReference<>(JdbcErrorDetails.Stage.CONNECTING);
-    private static final class Entry {
-        final Artifact artifact; final Snapshot snapshot;
-        Action action; Plan plan; String error;
-        Entry(Artifact artifact, Snapshot snapshot, Action action) { this.artifact = artifact; this.snapshot = snapshot; this.action = action; }
-    }
 
     TableGenerationDialog(Shell parent, IProject project, List<IPackageFragmentRoot> roots) {
         super(parent); this.project = project; this.roots = List.copyOf(roots);
@@ -149,34 +141,9 @@ final class TableGenerationDialog extends TitleAreaDialog {
         updateCount();
     }
     private void createPreviewPage() {
-        Composite body = page("Proposed files", 2);
-        files = new org.eclipse.swt.widgets.Table(body, SWT.BORDER | SWT.FULL_SELECTION | SWT.SINGLE | SWT.V_SCROLL | SWT.H_SCROLL);
-        files.setHeaderVisible(true); files.setLinesVisible(true);
-        GridData listData = new GridData(SWT.FILL, SWT.FILL, true, false, 2, 1); listData.heightHint = 170; files.setLayoutData(listData);
-        for (String title : List.of("File", "Existing file action", "Status")) {
-            TableColumn column = new TableColumn(files, SWT.NONE); column.setText(title); column.setWidth(title.equals("File") ? 520 : 140);
-        }
-        new Label(body, SWT.NONE).setText("Selected file action");
-        Composite actions = new Composite(body, SWT.NONE); actions.setLayout(new GridLayout(2, false));
-        actions.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-        action = new Combo(actions, SWT.READ_ONLY); action.setItems(new String[]{"Merge", "Overwrite", "Keep unchanged"});
-        action.setEnabled(false);
-        action.addListener(SWT.Selection, e -> {
-            if (selectingAction || files.getSelectionCount() != 1) return;
-            Entry entry = (Entry) files.getSelection()[0].getData();
-            entry.action = Action.values()[action.getSelectionIndex()]; replan(entry); showFiles(entry);
-        });
-        Button applyAll = new Button(actions, SWT.PUSH); applyAll.setText("Apply action to all existing files");
-        applyAll.addListener(SWT.Selection, e -> {
-            if (action.getSelectionIndex() < 0) return;
-            Action selectedAction = Action.values()[action.getSelectionIndex()];
-            for (Entry entry : entries) if (entry.snapshot.source() != null) { entry.action = selectedAction; replan(entry); }
-            showFiles(null);
-        });
-        fileNote = new Label(body, SWT.WRAP); fileNote.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
-        source = new StyledText(body, SWT.BORDER | SWT.MULTI | SWT.V_SCROLL | SWT.H_SCROLL | SWT.READ_ONLY);
-        source.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 2, 1));
-        files.addListener(SWT.Selection, e -> showSelected());
+        Composite body = page("Proposed files", 1);
+        proposedFiles = new ProposedFilesPanel(body, this::updateButtons);
+        proposedFiles.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
     }
     private Text fullField(Composite body, String title, String initial) {
         Text field = field(body, title, initial); ((GridData) field.getLayoutData()).horizontalSpan = 2; return field;
@@ -227,16 +194,16 @@ final class TableGenerationDialog extends TitleAreaDialog {
     }
     private void updateCount() { if (count != null) count.setText(tables.size() + " tables/views; " + selected.size() + " selected"); }
     private void clearPreview() {
-        entries.clear(); reviewed = false; errorDetails = null;
-        if (files != null) { files.removeAll(); source.setText(""); fileNote.setText(""); action.setEnabled(false); }
+        filesModel = null; errorDetails = null;
+        if (proposedFiles != null) proposedFiles.setModel(null);
         if (getButton(COMPARE) != null) { getButton(COMPARE).setEnabled(false); getButton(IDialogConstants.OK_ID).setEnabled(false); getButton(DETAILS).setEnabled(false); }
         setErrorMessage(null);
     }
     @Override protected void createButtonsForButtonBar(Composite parent) {
         createButton(parent, PREVIEW, "Preview", true);
         createButton(parent, DETAILS, "Error details...", false).setEnabled(false);
-        createButton(parent, COMPARE, "Compare all changes...", false).setEnabled(false);
-        createButton(parent, IDialogConstants.OK_ID, "Generate files", false).setEnabled(false);
+        createButton(parent, COMPARE, "Compare checked changes...", false).setEnabled(false);
+        createButton(parent, IDialogConstants.OK_ID, "Generate checked files", false).setEnabled(false);
         createButton(parent, IDialogConstants.CANCEL_ID, "Cancel", false);
     }
     @Override protected void buttonPressed(int id) {
@@ -272,26 +239,16 @@ final class TableGenerationDialog extends TitleAreaDialog {
                 catch (Exception e) { throw new CompletionException(e); }
             });
             if (output == null) return;
-            List<Entry> pending = new ArrayList<>();
+            List<ProposedFilesModel.Destination> pending = new ArrayList<>();
             for (Artifact artifact : output) {
-                IFile file = (artifact.kind() == Kind.SQL ? sqlRoot : javaRoot).getFile(new org.eclipse.core.runtime.Path(artifact.path()));
-                pending.add(new Entry(artifact, updater.snapshot(file), Action.MERGE));
+                IContainer root = artifact.kind() == Kind.SQL ? sqlRoot : javaRoot;
+                IFile file = root.getFile(new org.eclipse.core.runtime.Path(artifact.path()));
+                pending.add(new ProposedFilesModel.Destination(artifact, file, root));
             }
-            long existing = pending.stream().filter(e -> e.snapshot.source() != null).count();
-            Action initial = Action.MERGE;
-            if (existing > 0) {
-                var dialog = new MessageDialog(getShell(), "Existing generated files", null,
-                        existing + " destination files already exist. Choose the initial action; you can change it per file in Proposed files.\n\n"
-                        + "Merge retains custom changes. Overwrite replaces entire files, including custom code/comments. No files are saved until comparison and Generate files.",
-                        MessageDialog.QUESTION, new String[]{"Merge", "Overwrite", "Cancel"}, 0);
-                int choice = dialog.open();
-                if (choice != 0 && choice != 1) { setMessage("Preview canceled. No files were changed."); return; }
-                initial = choice == 0 ? Action.MERGE : Action.OVERWRITE;
-            }
-            entries.addAll(pending);
-            for (Entry entry : entries) { entry.action = initial; replan(entry); }
-            showFiles(null); tabs.setSelection(2);
-            setMessage("Review each file and its action. Compare all changes before selecting Generate files. Merge conflicts must be resolved or kept unchanged.");
+            stage.set(JdbcErrorDetails.Stage.MERGING_CLASS);
+            filesModel = runWork("Preparing checked file previews...", spec.timeout(), cancel -> new ProposedFilesModel(updater, pending, cancel::check));
+            proposedFiles.setModel(filesModel); tabs.setSelection(2);
+            setMessage("Check files in the left tree and choose Merge/Overwrite. Unchecked files are skipped. Compare checked changes before generating.");
         } catch (Exception e) { showError(e); }
     }
     private static Path path(Text input) { return input.getText().isBlank() ? null : Path.of(input.getText().trim()); }
@@ -320,69 +277,47 @@ final class TableGenerationDialog extends TitleAreaDialog {
     private <T> T runDb(String title, TableConnectionPanel.Spec spec, Function<PreviewExecution.Cancellation, T> work) throws Exception {
         stage.set(JdbcErrorDetails.Stage.CONNECTING);
         oracleDriver = spec.driver().toLowerCase(Locale.ROOT).contains("oracle");
+        return runWork(title, spec.timeout(), work);
+    }
+    private <T> T runWork(String title, int timeout, Function<PreviewExecution.Cancellation, T> work) throws Exception {
         AtomicReference<T> result = new AtomicReference<>();
         ProgressMonitorDialog progress = new ProgressMonitorDialog(getShell());
         progress.run(true, true, monitor -> {
             monitor.beginTask(title, IProgressMonitor.UNKNOWN);
-            try { result.set(PreviewExecution.DEFAULT.run(work::apply, monitor::isCanceled, Duration.ofSeconds(spec.timeout()))); }
+            try { result.set(PreviewExecution.DEFAULT.run(work::apply, monitor::isCanceled, Duration.ofSeconds(timeout))); }
             catch (Exception | LinkageError e) { throw new InvocationTargetException(e); }
             finally { monitor.done(); }
         });
         if (progress.getProgressMonitor().isCanceled()) throw new CancellationException();
         return result.get();
     }
-    private void replan(Entry entry) {
-        reviewed = false; entry.plan = null; entry.error = null;
-        try { entry.plan = updater.plan(entry.artifact, entry.snapshot, entry.action); }
-        catch (IOException e) { entry.error = "Cannot read the workspace generation baseline. Check workspace permissions."; }
-        catch (GenerationException e) { entry.error = e.getMessage(); }
-    }
-    private void showFiles(Entry selectedEntry) {
-        if (selectedEntry == null && files.getSelectionCount() == 1) selectedEntry = (Entry) files.getSelection()[0].getData();
-        files.removeAll();
-        for (Entry entry : entries) {
-            TableItem item = new TableItem(files, SWT.NONE); item.setData(entry);
-            item.setText(new String[]{entry.snapshot.file().getProjectRelativePath().toPortableString(),
-                    entry.snapshot.source() == null ? "Create" : entry.action.toString(),
-                    entry.error != null ? "Conflict / error" : entry.plan.changed() ? "Changes" : "Unchanged"});
-            if (entry == selectedEntry) files.setSelection(item);
-        }
-        if (files.getSelectionCount() == 0 && files.getItemCount() > 0) files.select(0);
-        showSelected(); updateButtons();
-    }
-    private void showSelected() {
-        if (files.getSelectionCount() != 1) return;
-        Entry entry = (Entry) files.getSelection()[0].getData();
-        selectingAction = true;
-        try { action.select(entry.action.ordinal()); action.setEnabled(entry.snapshot.source() != null); }
-        finally { selectingAction = false; }
-        fileNote.setText(entry.error == null ? entry.plan.note() : entry.error);
-        source.setText(entry.plan == null ? entry.artifact.source() : entry.plan.after());
-        fileNote.getParent().layout();
-    }
-    private boolean validPlans() { return !entries.isEmpty() && entries.stream().allMatch(e -> e.plan != null); }
     private void updateButtons() {
-        boolean changes = validPlans() && entries.stream().anyMatch(e -> e.plan.changed());
-        getButton(COMPARE).setEnabled(changes); getButton(IDialogConstants.OK_ID).setEnabled(changes && reviewed);
-        if (!entries.isEmpty() && !validPlans()) setErrorMessage("Some files have merge conflicts/errors. Select those files and resolve the problem, choose Keep unchanged, or review an Overwrite.");
+        if (getButton(COMPARE) == null) return;
+        boolean changes = filesModel != null && filesModel.hasChanges();
+        getButton(COMPARE).setEnabled(changes); getButton(IDialogConstants.OK_ID).setEnabled(filesModel != null && filesModel.canApply());
+        if (filesModel != null && filesModel.checkedErrors() > 0) setErrorMessage("Checked files have conflicts/errors. Resolve them, uncheck those files, or choose Overwrite and review the differences.");
         else setErrorMessage(null);
     }
-    private List<Plan> plans() { return entries.stream().map(e -> e.plan).toList(); }
     private void compare() {
-        if (!validPlans()) return;
-        CompareUI.openCompareDialog(new TableCompareInput(plans())); reviewed = true; updateButtons();
+        if (filesModel == null || !filesModel.hasChanges()) return;
+        long revision = filesModel.revision();
+        var comparison = new TableCompareInput(filesModel.selectedPlans());
+        CompareUI.openCompareDialog(comparison);
+        if (comparison.getCompareResult() != null) filesModel.markCompared(revision);
+        updateButtons();
     }
     @Override protected void okPressed() {
-        if (!validPlans() || !reviewed) return;
+        if (filesModel == null || !filesModel.canApply()) return;
         try {
-            updater.apply(plans(), new NullProgressMonitor());
-            long changed = entries.stream().filter(e -> e.plan.changed()).count();
+            List<Plan> plans = filesModel.selectedPlans();
+            updater.apply(plans, new NullProgressMonitor());
+            long changed = plans.stream().filter(Plan::changed).count();
             MessageDialog.openInformation(getShell(), "Doma table generator", changed + " files generated/updated.");
             super.okPressed();
         } catch (IOException e) {
             MessageDialog.openWarning(getShell(), "Generation baseline", "Files were saved, but workspace generation baselines could not be saved. Check workspace permissions before the next merge.");
             super.okPressed();
-        } catch (CoreException | GenerationException e) { reviewed = false; updateButtons(); showError(e); }
+        } catch (CoreException | GenerationException e) { filesModel.invalidateReview(); updateButtons(); showError(e); }
     }
     private void showError(Throwable error) {
         while ((error instanceof InvocationTargetException || error instanceof ExecutionException || error instanceof CompletionException) && error.getCause() != null) error = error.getCause();

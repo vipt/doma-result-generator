@@ -63,8 +63,9 @@
         <li>ExplorerでJavaプロジェクトやフォルダーを右クリックし、<strong>Generate Doma DAO, Entity and SQL...</strong>を選びます。<strong>Project</strong>メニューからも起動できます。</li>
         <li>既存の<strong>Connection profile</strong>を選択し、Java／SQLの出力先とEntity／DAOのパッケージを指定します。EntityListener、<code>name.properties</code>、既存のdoma-genのFreeMarkerテンプレートディレクトリーも指定できます。</li>
         <li><strong>Tables → Load tables</strong>でテーブルを読み込み、生成対象にチェックを入れます。スキーマ・View表示・文字列フィルターで対象を探せます。</li>
-        <li><strong>Preview</strong>を押します。既存ファイルがあれば<strong>Merge／Overwrite／Cancel</strong>を選択し、<strong>Proposed files</strong>でファイルごとに変更できます。<strong>Keep unchanged</strong>も選択可能です。</li>
-        <li><strong>Compare all changes...</strong>で一括差分を確認後、<strong>Generate files</strong>で保存します。PreviewとCancelでは生成ファイルを書き込みません。</li>
+        <li><strong>Preview</strong>を押すと、<strong>Proposed files</strong>の左にチェック付きツリー、右に選択ファイルの内容を表示します。境界のドラッグで幅を調整できます。新規は<strong>Create</strong>、既存は初期値を<strong>Merge</strong>にします。</li>
+        <li>生成・更新するファイルにチェックし、<strong>Merge checked／Overwrite checked</strong>でチェックした既存ファイルだけに操作を一括指定できます。親のチェックは配下へ反映し、一部選択は中間状態で表示します。未チェックは変更しません。</li>
+        <li><strong>Compare checked changes...</strong>でチェック対象だけの差分を確認後、<strong>Generate checked files</strong>で保存します。チェックや操作を変えたら再比較が必要です。PreviewとCancelでは生成ファイルを書き込みません。</li>
       </ol>
       <p>公式doma-gen 2.28.0のテーブルメタデータ取得・記述ファクトリー・FreeMarker生成処理を使用します。Gradleの実行は不要です。既存の<code>dao.ftl</code>・<code>entityListener.ftl</code>・<code>entity.ftl</code>・<code>*.sql.ftl</code>を利用でき、主キー・Version列・自動採番・型変換も公式処理に従います。主キーがないテーブルには既定のSELECT SQLは生成しません。DBのデータは更新しません。</p>
       <p>JavaのMergeは手動追加メンバーやコメントを保持します。初回は既存メンバーとクラスのアノテーションを保持し、足りないアノテーション・メンバー・importを追加します。前回の生成結果がない既存SQLは、そのまま保持します。以降はワークスペース内に保存した前回の生成結果を使ってマージし、競合があれば更新を止めます。Overwriteは手動コードとコメントも含めて置き換えるため、差分を確認してください。</p>
@@ -140,8 +141,9 @@
         <li>Select a Java project or folder in Explorer and choose <strong>Generate Doma DAO, Entity and SQL...</strong>. It is also available from the <strong>Project</strong> menu.</li>
         <li>Reuse a connection profile and choose Java/SQL destinations and entity/DAO packages. Optionally select an EntityListener, <code>name.properties</code> and your existing doma-gen FreeMarker template directory.</li>
         <li>Choose <strong>Tables → Load tables</strong> and check the tables to generate. Schema patterns, views and a text filter help narrow the list.</li>
-        <li>Choose <strong>Preview</strong>. Existing files offer <strong>Merge / Overwrite / Cancel</strong>, with per-file actions and <strong>Keep unchanged</strong> under <strong>Proposed files</strong>.</li>
-        <li>Inspect <strong>Compare all changes...</strong>, then select <strong>Generate files</strong>. Preview and Cancel do not write generated files.</li>
+        <li>Choose <strong>Preview</strong>. <strong>Proposed files</strong> displays a checkbox tree on the left and the selected file's contents on the right, with a draggable divider. New files use <strong>Create</strong>; existing files default to <strong>Merge</strong>.</li>
+        <li>Check files to generate/update. <strong>Merge checked / Overwrite checked</strong> affects only checked existing files. Parent checks include descendants and partial selections are indeterminate. Unchecked files are skipped.</li>
+        <li>Inspect <strong>Compare checked changes...</strong>, then select <strong>Generate checked files</strong>. Changing checks/actions requires comparison again. Preview and Cancel do not write generated files.</li>
       </ol>
       <p>Uses official doma-gen 2.28.0 table metadata, descriptor factories and FreeMarker generation; Gradle is not required. Reuse <code>dao.ftl</code>, <code>entityListener.ftl</code>, <code>entity.ftl</code> and <code>*.sql.ftl</code>. Primary keys, version columns, identity and type mappings follow the official generator. Tables without primary keys have no default SELECT SQL. Database data is not modified.</p>
       <p>Java merges retain custom members and comments; initial adoption keeps existing members/class annotations and adds missing annotations/members/imports. Existing SQL without a previous generation baseline is kept unchanged. Later merges use workspace-local baselines and stop on conflicts. Overwrite replaces entire files, including custom code/comments. Reuses SELECT generation connection profiles and remembers table-generation defaults per project. See the <a href="https://github.com/vipt/doma-result-generator/blob/main/README.md#generate-from-database-tables">README</a> for templates, schema handling and merge limits.</p>

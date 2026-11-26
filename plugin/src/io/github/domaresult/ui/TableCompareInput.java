@@ -11,7 +11,7 @@ import org.eclipse.compare.structuremergeviewer.*;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.swt.graphics.Image;
 
-/** Read-only comparison tree containing every proposed file in a table generation batch. */
+/** Read-only comparison tree for changed files in the supplied (checked) generation plans. */
 final class TableCompareInput extends CompareEditorInput {
     private final List<Plan> plans;
     TableCompareInput(List<Plan> plans) {

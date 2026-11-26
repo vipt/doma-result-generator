@@ -71,8 +71,9 @@ SQLエディターから起動した場合、Eclipseのテキストバッファ�
 2. 登録済みの**Connection profile**を選ぶか、JDBC接続情報を入力します。SELECT結果生成と同じ接続プロファイル・任意の暗号化パスワード保存・未登録のプロジェクト設定・タイムアウトを利用できます。入力済みの接続は**Save as...**で再入力せず登録でき、共有プロファイルの変更は**Update profile**で保存します。
 3. Javaの出力先、SQLのリソースフォルダー、Entity／DAOのパッケージを指定します。EntityListenerの生成、`name.properties`、既存のdoma-genのFreeMarkerテンプレートディレクトリーも指定できます。これらの生成設定は接続情報とは別にプロジェクトごとに保持し、Cancelで閉じても復元します。
 4. **Tables → Load tables**で一覧を読み込み、対象テーブルにチェックを入れます。スキーマはJDBCのパターンで絞り込みでき、空欄はDBの既定値です。Viewの表示、文字列フィルター、表示中の全選択も可能です。フィルターで隠れたテーブルのチェックは保持し、**Clear selection**で全解除します。
-5. **Preview**で生成し、既存ファイルがあれば**Merge／Overwrite／Cancel**を選択します。**Proposed files**でファイルごとに選び直すことや、全既存ファイルへの一括指定ができます。**Keep unchanged**は既存ファイルを変更しません。
-6. **Compare all changes...**で全ファイルの差分ツリーを確認し、**Generate files**で保存します。更新方式を変更したら再度差分確認が必要です。PreviewとCancelでは生成ファイルを書き込みません。未保存の編集、Preview後の変更、マージ競合があれば一括保存を止めます。
+5. **Preview**で生成します。**Proposed files**は左がチェック付きツリー、右が選択ファイルの内容です。境界をドラッグして左右の幅を調整できます。出力フォルダーとパッケージごとに表示し、SQLは`META-INF`配下のDAOフォルダーにまとめます。新規は**Create**、既存は初期値を**Merge**にします。
+6. 今回生成・更新するファイルにチェックを入れます。未チェックは変更しません。親のチェックで配下をまとめて選択し、一部選択は中間状態で表示します。**Check all／Uncheck all**で全選択・解除、**Expand／Collapse**で展開・折りたたみができます。**Merge checked／Overwrite checked**はチェックした既存ファイルだけに一括指定し、新規はCreateのままです。右側の**Selected file action**ではチェック中の既存ファイルを個別指定できます。各行に操作と競合・変更の状態を表示します。
+7. **Compare checked changes...**でチェック対象だけの差分を確認し、**Generate checked files**で保存します。チェックや操作を変更したら再度差分確認が必要です。未チェックのファイルは比較・保存・前回の生成結果の更新に含めず、そのファイルの未保存編集や競合はチェック対象の保存を妨げません。チェック対象の未保存編集・Preview後の変更・マージ競合は保存を止めます。PreviewとCancelでは生成ファイルを書き込みません。
 
 Gradle／Antの`Gen`と同じ、公式doma-genの`TableMetaReader`、Entity／DAO／Listener／SQLの記述ファクトリー、FreeMarkerの`Generator`を使用します。Gradleの実行は不要です。SQLの独自解析や条件判定は追加していません。既存の`dao.ftl`・`entityListener.ftl`・`entity.ftl`・`*.sql.ftl`はそのディレクトリーを指定して利用でき、不足するテンプレートは公式の既定値に戻ります。プロジェクト固有のアノテーションやユーティリティーを参照するテンプレートでは、出力先にその依存関係が必要です。既定のEntityはprivateフィールドとpublicのアクセサー、importした型を出力します。独自の`entity.ftl`を指定した場合は、その内容に従います。
 
