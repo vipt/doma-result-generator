@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Doma 2のSELECT結果からJavaの結果クラスを生成するEclipseプラグイン。型指定と、手動コードを保持する差分更新に対応します。">
+  <meta name="description" content="Doma 2のSELECT結果クラスと、選択したDBテーブルからDAO・Entity・SQLを生成するEclipseプラグイン。既存ファイルのマージ・上書きと差分確認に対応します。">
   <meta name="color-scheme" content="light dark">
   <title>Doma Result Generator — Eclipse Update Site</title>
   <link rel="stylesheet" href="styles.css">
@@ -13,7 +13,7 @@
   <header>
     <p class="eyebrow">ECLIPSE PLUGIN · DOMA 2</p>
     <h1>Doma Result Generator</h1>
-    <p class="lead">SELECTの結果を、Javaの結果クラスへ。</p>
+    <p class="lead">SELECTの結果クラスと、テーブルからDAO・Entity・SQLを生成。</p>
     <nav aria-label="Language / 言語"><a href="#ja">日本語</a><span aria-hidden="true"> / </span><a href="#en" lang="en">English</a></nav>
   </header>
 
@@ -57,6 +57,18 @@
       <pre><code># name.properties
 .*Datetime$=java.time.LocalDateTime</code></pre>
       <p><code>CREATED_DATETIME</code>から生成する<code>createdDatetime</code>のようなJavaのプロパティ名に照合し、上から最初に一致したルールをJDBCの推定型より優先します。</p>
+
+      <h3 id="table-generation-ja">テーブルからDAO・Entity・SQLを生成</h3>
+      <ol>
+        <li>ExplorerでJavaプロジェクトやフォルダーを右クリックし、<strong>Generate Doma DAO, Entity and SQL...</strong>を選びます。<strong>Project</strong>メニューからも起動できます。</li>
+        <li>既存の<strong>Connection profile</strong>を選択し、Java／SQLの出力先とEntity／DAOのパッケージを指定します。EntityListener、<code>name.properties</code>、既存のdoma-genのFreeMarkerテンプレートディレクトリーも指定できます。</li>
+        <li><strong>Tables → Load tables</strong>でテーブルを読み込み、生成対象にチェックを入れます。スキーマ・View表示・文字列フィルターで対象を探せます。</li>
+        <li><strong>Preview</strong>を押します。既存ファイルがあれば<strong>Merge／Overwrite／Cancel</strong>を選択し、<strong>Proposed files</strong>でファイルごとに変更できます。<strong>Keep unchanged</strong>も選択可能です。</li>
+        <li><strong>Compare all changes...</strong>で一括差分を確認後、<strong>Generate files</strong>で保存します。PreviewとCancelでは生成ファイルを書き込みません。</li>
+      </ol>
+      <p>公式doma-gen 2.28.0のテーブルメタデータ取得・記述ファクトリー・FreeMarker生成処理を使用します。Gradleの実行は不要です。既存の<code>dao.ftl</code>・<code>entityListener.ftl</code>・<code>entity.ftl</code>・<code>*.sql.ftl</code>を利用でき、主キー・Version列・自動採番・型変換も公式処理に従います。主キーがないテーブルには既定のSELECT SQLは生成しません。DBのデータは更新しません。</p>
+      <p>JavaのMergeは手動追加メンバーやコメントを保持します。初回は既存メンバーとクラスのアノテーションを保持し、足りないアノテーション・メンバー・importを追加します。前回の生成結果がない既存SQLは、そのまま保持します。以降はワークスペース内に保存した前回の生成結果を使ってマージし、競合があれば更新を止めます。Overwriteは手動コードとコメントも含めて置き換えるため、差分を確認してください。</p>
+      <p>接続プロファイルはSELECT結果生成と共通です。パッケージ・出力先などのテーブル生成設定もプロジェクトごとに保持します。カスタムテンプレートとスキーマの扱い、マージの範囲は<a href="https://github.com/vipt/doma-result-generator/blob/main/README.ja.md#table-generation">日本語README</a>に記載しています。</p>
 
       <h3 id="connection-profiles-ja">接続プロファイルの使い方</h3>
       <ol>
@@ -110,6 +122,17 @@
         <li>Share named connection profiles across projects in one workspace. Remember each project's last profile and Package, with optional encrypted password storage in Eclipse Secure Storage.</li>
         <li>Cancel the preview wait from its progress dialog even while connecting. Set <strong>Preview timeout (seconds)</strong> to limit the wait (default: 30 seconds). Late results are discarded.</li>
       </ul>
+      <h3 id="table-generation-en">Generate DAO, Entity and SQL from tables</h3>
+      <ol>
+        <li>Select a Java project or folder in Explorer and choose <strong>Generate Doma DAO, Entity and SQL...</strong>. It is also available from the <strong>Project</strong> menu.</li>
+        <li>Reuse a connection profile and choose Java/SQL destinations and entity/DAO packages. Optionally select an EntityListener, <code>name.properties</code> and your existing doma-gen FreeMarker template directory.</li>
+        <li>Choose <strong>Tables → Load tables</strong> and check the tables to generate. Schema patterns, views and a text filter help narrow the list.</li>
+        <li>Choose <strong>Preview</strong>. Existing files offer <strong>Merge / Overwrite / Cancel</strong>, with per-file actions and <strong>Keep unchanged</strong> under <strong>Proposed files</strong>.</li>
+        <li>Inspect <strong>Compare all changes...</strong>, then select <strong>Generate files</strong>. Preview and Cancel do not write generated files.</li>
+      </ol>
+      <p>Uses official doma-gen 2.28.0 table metadata, descriptor factories and FreeMarker generation; Gradle is not required. Reuse <code>dao.ftl</code>, <code>entityListener.ftl</code>, <code>entity.ftl</code> and <code>*.sql.ftl</code>. Primary keys, version columns, identity and type mappings follow the official generator. Tables without primary keys have no default SELECT SQL. Database data is not modified.</p>
+      <p>Java merges retain custom members and comments; initial adoption keeps existing members/class annotations and adds missing annotations/members/imports. Existing SQL without a previous generation baseline is kept unchanged. Later merges use workspace-local baselines and stop on conflicts. Overwrite replaces entire files, including custom code/comments. Reuses SELECT generation connection profiles and remembers table-generation defaults per project. See the <a href="https://github.com/vipt/doma-result-generator/blob/main/README.md#generate-from-database-tables">README</a> for templates, schema handling and merge limits.</p>
+
       <h3 id="connection-profiles-en">Using connection profiles</h3>
       <ol>
         <li>Open the generator in a project with saved settings. <strong>Connection profile → Unregistered (project settings)</strong> shows its previous connection.</li>

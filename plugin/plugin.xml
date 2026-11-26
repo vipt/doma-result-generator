@@ -4,15 +4,29 @@
   <extension point="org.eclipse.core.expressions.propertyTesters">
     <propertyTester id="io.github.domaresult.sqlFileTester" namespace="io.github.domaresult"
       properties="sqlFile" type="org.eclipse.core.resources.IFile" class="io.github.domaresult.ui.SqlFilePropertyTester"/>
+    <propertyTester id="io.github.domaresult.javaProjectTester" namespace="io.github.domaresult"
+      properties="javaProject" type="org.eclipse.core.resources.IResource" class="io.github.domaresult.ui.JavaProjectPropertyTester"/>
   </extension>
   <extension point="org.eclipse.ui.commands">
     <command id="io.github.domaresult.generate" name="Generate Doma Result Class..."/>
+    <command id="io.github.domaresult.generateTables" name="Generate Doma DAO, Entity and SQL..."/>
   </extension>
   <extension point="org.eclipse.ui.handlers">
     <handler commandId="io.github.domaresult.generate" class="io.github.domaresult.ui.GenerateHandler"/>
+    <handler commandId="io.github.domaresult.generateTables" class="io.github.domaresult.ui.TableGenerationHandler"/>
   </extension>
   <extension point="org.eclipse.ui.menus">
+    <menuContribution locationURI="menu:project?after=additions">
+      <command commandId="io.github.domaresult.generateTables" style="push"/>
+    </menuContribution>
     <menuContribution locationURI="popup:org.eclipse.ui.popup.any?after=additions">
+      <command commandId="io.github.domaresult.generateTables" style="push">
+        <visibleWhen checkEnabled="false">
+          <with variable="activeMenuSelection">
+            <and><count value="1"/><iterate ifEmpty="false"><adapt type="org.eclipse.core.resources.IResource"><test property="io.github.domaresult.javaProject" forcePluginActivation="true"/></adapt></iterate></and>
+          </with>
+        </visibleWhen>
+      </command>
       <command commandId="io.github.domaresult.generate" style="push">
         <visibleWhen checkEnabled="false">
           <or>

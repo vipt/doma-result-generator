@@ -4,9 +4,13 @@
 
 An independent Eclipse plug-in that generates a Doma 2 entity from the columns returned by a SELECT. Designed for joins, projections, aggregates and SQL result sets that do not match a single table.
 
+It also generates DAO interfaces, entities, optional entity listeners and SQL files from selected database tables using official **doma-gen 2.28.0**.
+
 **Status: initial prototype.** The core is exercised with H2 and Doma 2.57.0. Other database compatibility depends on the JDBC driver and official doma-gen dialect; it is not a claim of compatibility with every database. This is not an official Doma or Eclipse project.
 
 ## Workflow
+
+For SELECT result classes, use the workflow below. For table-based generation, see [Generate from database tables](#generate-from-database-tables).
 
 1. Save a `.sql` file in an Eclipse Java project.
 2. Right-click the SQL file in Package Explorer or Project Explorer, or inside its open SQL editor, and select **Generate Doma Result Class...**.
@@ -60,6 +64,23 @@ If saving shows `Connection settings or the saved password could not be updated.
 5. In the prompt, create or enter the master password used to encrypt Eclipse's saved information. Reopen the generator to confirm the database Password is restored.
 
 **UI Prompt still uses encrypted Eclipse Secure Storage.** Only the way Eclipse obtains its master password changes. This setting affects newly saved information throughout Eclipse; existing entries are not migrated automatically. See the official [Secure Storage preferences](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-prefs.htm) and [how Secure Storage works](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-works.htm).
+
+## Generate from database tables
+
+1. Select a Java project, source folder or file in Explorer. Choose **Generate Doma DAO, Entity and SQL...** from its context menu, or from **Project**.
+2. Select an existing **Connection profile**, or enter JDBC settings. Profiles, optional encrypted passwords, per-project unregistered settings and timeouts are shared with the SELECT result generator. **Save as...** registers the currently entered connection without retyping it; **Update profile** saves edits to a shared profile.
+3. Choose the Java source folder and SQL resource folder, entity/DAO packages, optional EntityListener, `name.properties`, and an optional existing doma-gen FreeMarker template directory. Table-generation defaults are remembered separately per project, including when canceled.
+4. In **Tables**, choose **Load tables**. Optionally filter by schema (a JDBC schema pattern), include views, filter the list, and check the tables to generate. **Select shown** selects the filtered rows; hidden checked tables stay selected until **Clear selection**.
+5. Choose **Preview**. If destinations exist, choose **Merge**, **Overwrite** or **Cancel**. In **Proposed files**, change the action per file or apply it to all existing files. **Keep unchanged** excludes an existing file from updating.
+6. Choose **Compare all changes...** to inspect the read-only comparison tree, then **Generate files**. Any action change requires comparing again. Preview/cancellation never writes generated files. Dirty editors, stale files or merge conflicts prevent saving the batch.
+
+This uses official doma-gen's `TableMetaReader`, entity/DAO/listener/SQL descriptor factories and FreeMarker `Generator`, the same table generation pipeline as `Gen` invoked from Gradle/Ant. A Gradle installation or Gradle task is not required. No custom SQL parsing or template condition evaluator is used. Existing `dao.ftl`, `entityListener.ftl`, `entity.ftl` and `*.sql.ftl` templates can be reused by selecting their directory; missing templates fall back to doma-gen's defaults. Templates referencing application annotations/utilities still require those dependencies in the target project. Default entity fields are private with public accessors and imported types; a supplied `entity.ftl` controls its own output.
+
+Primary keys, identity columns, version columns and JDBC types follow doma-gen. Primary keys produce `selectById.sql`; a version column also produces `selectByIdAndVersion.sql`. Without a primary key there is no default SELECT SQL. SQL files go under `META-INF/<qualified DAO name as folders>/`. **Include schema in @Table** affects the entity annotation; SQL text follows the official templates, so the application's default schema must match, or its existing SQL templates must qualify table names. Duplicate destinations across selected schemas are rejected. The generator reads database metadata (and may run doma-gen's metadata SELECTs); it does not modify database data or run the generated INSERT/UPDATE/DELETE methods.
+
+For existing **Java** without a previous generation baseline, Merge preserves existing class annotations, members and comments, and adds missing class annotations/members/imports. It does not claim existing members as generated. Subsequent merges compare the previous generator output with current and newly generated Java by member, preserving custom additions and comments; overlapping edits stop the merge. For existing **SQL** without a baseline, Merge preserves the whole file. Choose Overwrite explicitly to replace it. Later SQL merges use Eclipse's three-way line differencer and stop on overlapping edits.
+
+Baselines contain the last generator output and are saved only in Eclipse workspace metadata after generation; they are not added to the project or Git. A different workspace has no baseline. Overwrite replaces the complete file, including handwritten code/comments; existing encodings, BOMs and line endings are retained and Eclipse local history is kept. Always inspect the comparison, especially existing Java class annotations/types and custom templates. A batch does not remove obsolete files outside its proposed output list.
 
 ## Example
 

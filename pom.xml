@@ -11,7 +11,7 @@
     <connection>scm:git:https://github.com/vipt/doma-result-generator.git</connection>
     <url>https://github.com/vipt/doma-result-generator</url>
   </scm>
-  <description>An independent Eclipse plug-in generating Doma 2 entities from SELECT result metadata.</description>
+  <description>An independent Eclipse plug-in generating Doma 2 result entities and table-based DAO, Entity and SQL files.</description>
   <licenses><license><name>Apache License, Version 2.0</name><url>https://www.apache.org/licenses/LICENSE-2.0</url></license></licenses>
   <modules>
     <module>tests</module>

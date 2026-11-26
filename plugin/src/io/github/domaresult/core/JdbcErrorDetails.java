@@ -13,6 +13,7 @@ import java.util.regex.Pattern;
 /** Extracts diagnostic codes without exposing raw driver messages or connection details. */
 public final class JdbcErrorDetails {
     public enum Stage {
+        READING_TABLES("reading database tables with doma-gen", "Check the selected schema, metadata privileges and supported column types."),
         PROCESSING_TEMPLATE("processing the template with Doma", "Build the project and check DAO parameter types, constructors and dependencies. Dummy arguments are supplied automatically."),
         EXECUTING_SELECT("executing the SELECT with doma-gen", "Check the database schema, privileges and SQL functions used by the Doma-prepared SELECT."),
         LOADING_DRIVER("loading the JDBC driver", "Check driver JARs, the driver class and Java compatibility."),

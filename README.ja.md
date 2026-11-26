@@ -4,9 +4,13 @@
 
 SELECTの結果を格納するDoma 2用のJavaクラスを生成する、独立したコミュニティ製のEclipseプラグインです。JOINや集計など、1つのテーブルと対応しない検索結果に利用できます。
 
+DBのテーブルを選択し、公式**doma-gen 2.28.0**でDAO・Entity・SQLと、必要に応じてEntityListenerを生成する機能もあります。
+
 **初期試作版です。** H2とDoma 2.57.0でコア部分をテストします。他DBとの互換性はJDBCドライバーと公式doma-genの方言に依存します。Doma・Eclipseの公式製品ではありません。
 
 ## 使い方
+
+以下はSELECT結果クラスの生成手順です。テーブルからの生成は[テーブルからDAO・Entity・SQLを生成](#table-generation)を参照してください。
 
 1. EclipseのJavaプロジェクト内でSQLファイルを保存します。
 2. Package Explorer・Project ExplorerのSQLファイル、または開いているSQLファイルのエディター上で右クリックし、**Generate Doma Result Class...**を選びます。
@@ -58,6 +62,25 @@ SQLエディターから起動した場合、Eclipseのテキストバッファ�
 5. 表示される入力画面で、Eclipseの保存情報を暗号化するためのマスターパスワードを設定または入力します。その後、生成ダイアログを開き直してPasswordが復元されることを確認します。
 
 **UI PromptでもSecure Storageによる暗号化保存を利用します。**変更するのはマスターパスワードの取得方法です。この設定はEclipse全体で新しく保存する情報に影響し、既存の保存情報は自動移行されません。詳しくは[EclipseのSecure Storage設定](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-prefs.htm)と[動作の説明](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.user/reference/ref-securestorage-works.htm)を参照してください。
+
+<a id="table-generation"></a>
+
+## テーブルからDAO・Entity・SQLを生成
+
+1. ExplorerでJavaプロジェクト、ソースフォルダー、またはその中のファイルを選択し、右クリックで**Generate Doma DAO, Entity and SQL...**を選びます。**Project**メニューからも起動できます。
+2. 登録済みの**Connection profile**を選ぶか、JDBC接続情報を入力します。SELECT結果生成と同じ接続プロファイル・任意の暗号化パスワード保存・未登録のプロジェクト設定・タイムアウトを利用できます。入力済みの接続は**Save as...**で再入力せず登録でき、共有プロファイルの変更は**Update profile**で保存します。
+3. Javaの出力先、SQLのリソースフォルダー、Entity／DAOのパッケージを指定します。EntityListenerの生成、`name.properties`、既存のdoma-genのFreeMarkerテンプレートディレクトリーも指定できます。これらの生成設定は接続情報とは別にプロジェクトごとに保持し、Cancelで閉じても復元します。
+4. **Tables → Load tables**で一覧を読み込み、対象テーブルにチェックを入れます。スキーマはJDBCのパターンで絞り込みでき、空欄はDBの既定値です。Viewの表示、文字列フィルター、表示中の全選択も可能です。フィルターで隠れたテーブルのチェックは保持し、**Clear selection**で全解除します。
+5. **Preview**で生成し、既存ファイルがあれば**Merge／Overwrite／Cancel**を選択します。**Proposed files**でファイルごとに選び直すことや、全既存ファイルへの一括指定ができます。**Keep unchanged**は既存ファイルを変更しません。
+6. **Compare all changes...**で全ファイルの差分ツリーを確認し、**Generate files**で保存します。更新方式を変更したら再度差分確認が必要です。PreviewとCancelでは生成ファイルを書き込みません。未保存の編集、Preview後の変更、マージ競合があれば一括保存を止めます。
+
+Gradle／Antの`Gen`と同じ、公式doma-genの`TableMetaReader`、Entity／DAO／Listener／SQLの記述ファクトリー、FreeMarkerの`Generator`を使用します。Gradleの実行は不要です。SQLの独自解析や条件判定は追加していません。既存の`dao.ftl`・`entityListener.ftl`・`entity.ftl`・`*.sql.ftl`はそのディレクトリーを指定して利用でき、不足するテンプレートは公式の既定値に戻ります。プロジェクト固有のアノテーションやユーティリティーを参照するテンプレートでは、出力先にその依存関係が必要です。既定のEntityはprivateフィールドとpublicのアクセサー、importした型を出力します。独自の`entity.ftl`を指定した場合は、その内容に従います。
+
+主キー・自動採番・Version列・型変換はdoma-genに従います。主キーがあれば`selectById.sql`、Version列もあれば`selectByIdAndVersion.sql`を生成します。主キーがないテーブルは既定のSELECT SQLを生成しません。SQLの出力先は`META-INF/DAOの完全修飾名をフォルダーにしたパス/`です。**Include schema in @Table**はEntityのアノテーションに適用します。SQLは公式テンプレートどおりのため、アプリケーションの既定スキーマを合わせるか、既存のSQLテンプレートで修飾してください。異なるスキーマの同名テーブルなどで出力先が重複する場合は生成を止めます。DBメタデータを読み取り、doma-genのメタデータ確認用SELECTを実行する場合がありますが、DBのデータ更新や生成DAOのINSERT／UPDATE／DELETEは実行しません。
+
+前回の生成結果がない既存**Java**のMergeでは、既存のクラスアノテーション・メンバー・コメントを保持し、足りないクラスアノテーション・メンバー・importを追加します。既存メンバーを生成専用とは判定しません。以降は前回の生成結果と現在／今回のJavaをメンバー単位で比較し、手動追加を保持します。同じ箇所の競合は更新を止めます。前回の生成結果がない既存**SQL**のMergeは、ファイル全体を保持します。置き換える場合は明示的にOverwriteを選びます。以降のSQLはEclipseの3方向差分でマージし、重なる変更があれば止めます。
+
+前回の生成結果は生成後にEclipseワークスペースのメタデータ内だけに保存し、プロジェクトやGitには追加しません。別ワークスペースには引き継がれません。Overwriteは手動コードとコメントも含めてファイル全体を置き換えます。既存ファイルの文字コード・BOM・改行を維持し、Eclipseのローカルヒストリーを保持します。特に既存Javaのクラスアノテーション・型や独自テンプレートは差分を確認してください。今回の生成対象にない古いファイルの削除は行いません。
 
 ## 既存クラスの差分プレビューと更新
 
